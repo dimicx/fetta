@@ -9,6 +9,8 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "motion": "^12.26.1",
+    "motion-plus": "https://api.motion.dev/registry.tgz?package=motion-plus&version=2.0.2&token=329a9240a97263a0d69c73c20120b89d433eeccbbb1de642cc38ccf7ed794750",
     "next": "16.1.1",
     "react": "19.2.3",
     "react-dom": "19.2.3"
