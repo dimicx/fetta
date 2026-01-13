@@ -2,10 +2,45 @@
 
 import { animate, stagger } from "motion";
 import { SplitText } from "./components/SplitText";
+import { SplitText as CustomSplitText } from "./split-text";
+import { Example } from "./example";
 
 export default function Home() {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-24 bg-zinc-950 px-8 py-24 font-sans">
+      <Example />
+      {/* Custom SplitText: Test with em-dash */}
+      <section className="flex w-full max-w-2xl flex-col gap-4">
+        <span className="text-xs font-medium uppercase tracking-widest text-emerald-500">
+          ✨ Custom SplitText (Em-dash test)
+        </span>
+        <CustomSplitText
+          autoSplit
+          onSplit={({ lines }) => {
+            animate(
+              lines,
+              { opacity: [0, 1], x: [-30, 0] },
+              {
+                type: "spring",
+                duration: 1.2,
+                bounce: 0.2,
+                delay: stagger(0.15),
+              }
+            );
+          }}
+        >
+          <p className="text-lg leading-loose text-zinc-400">
+            Create beautiful animations with just a few lines of code. Motion
+            handles the complexity so you can focus on what matters
+            most—building great user experiences that delight and engage.
+          </p>
+        </CustomSplitText>
+        <p className="text-lg leading-loose text-zinc-600">
+          Create beautiful animations with just a few lines of code. Motion
+          handles the complexity so you can focus on what matters most—building
+          great user experiences that delight and engage.
+        </p>
+      </section>
       {/* Example 1: Staggered words with spring */}
       <section className="flex w-full max-w-2xl flex-col gap-4">
         <span className="text-xs font-medium uppercase tracking-widest text-zinc-500">
