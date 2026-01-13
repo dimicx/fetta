@@ -61,15 +61,15 @@ export default function Home() {
         </SplitText>
       </section>
 
-      {/* Example 3: Lines with fade, autoSplit and revert on complete */}
+      {/* Example 3: Lines with fade, autoSplit */}
       <section className="flex w-full max-w-2xl flex-col gap-4">
         <span className="text-xs font-medium uppercase tracking-widest text-zinc-500">
           Line by Line (autoSplit)
         </span>
         <SplitText
           autoSplit
-          onSplit={async ({ lines }) => {
-            return animate(
+          onSplit={({ lines }) => {
+            animate(
               lines,
               { opacity: [0, 1], x: [-30, 0] },
               {
@@ -89,7 +89,32 @@ export default function Home() {
         </SplitText>
       </section>
 
-      {/* Example 4: Mixed animation with blur */}
+      {/* Example 4: Revert after animation completes */}
+      <section className="flex w-full max-w-2xl flex-col gap-4">
+        <span className="text-xs font-medium uppercase tracking-widest text-zinc-500">
+          Revert After Complete
+        </span>
+        <SplitText
+          onSplit={({ words }) => {
+            // Return the animation promise - text reverts when it resolves
+            return animate(
+              words,
+              {
+                opacity: [0, 1],
+                y: [15, 0],
+                filter: ["blur(8px)", "blur(0px)"],
+              },
+              { duration: 0.6, delay: stagger(0.04) }
+            ).finished;
+          }}
+        >
+          <h2 className="text-3xl font-semibold leading-snug text-white">
+            Smooth, performant animations powered by Motion
+          </h2>
+        </SplitText>
+      </section>
+
+      {/* Example 5: Mixed animation with blur */}
       <section className="flex w-full max-w-2xl flex-col gap-4">
         <span className="text-xs font-medium uppercase tracking-widest text-zinc-500">
           Words with Blur
