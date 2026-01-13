@@ -27,10 +27,12 @@ interface SplitResult {
 
 interface SplitTextProps {
   children: ReactElement;
-  /** Return a promise to revert to original HTML when it resolves */
+  /** Called after text is split. Return a promise to enable revert (requires revertOnComplete) */
   onSplit: (result: SplitResult) => void | Promise<unknown>;
   options?: SplitTextOptions;
   autoSplit?: boolean;
+  /** When true, reverts to original HTML after onSplit's returned promise resolves */
+  revertOnComplete?: boolean;
 }
 
 interface OriginalWordData {
@@ -303,6 +305,7 @@ export function SplitText({
   onSplit,
   options,
   autoSplit = false,
+  revertOnComplete = false,
 }: SplitTextProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [childElement, setChildElement] = useState<HTMLElement | null>(null);
@@ -310,11 +313,13 @@ export function SplitText({
   // Stable refs for callbacks and options (prevents unnecessary effect re-runs)
   const onSplitRef = useRef(onSplit);
   const optionsRef = useRef(options);
+  const revertOnCompleteRef = useRef(revertOnComplete);
 
   // Keep refs in sync with latest props (useLayoutEffect to update before other effects)
   useLayoutEffect(() => {
     onSplitRef.current = onSplit;
     optionsRef.current = options;
+    revertOnCompleteRef.current = revertOnComplete;
   });
 
   // Refs for autoSplit (no re-renders needed)
@@ -394,14 +399,26 @@ export function SplitText({
       // Invoke the callback with split elements
       const maybePromise = onSplitRef.current(result);
 
-      // If onSplit returns a promise, revert to original HTML when it resolves
-      if (maybePromise instanceof Promise) {
-        maybePromise.then(() => {
-          if (!isMounted || originalHtmlRef.current === null) return;
-          childElement.innerHTML = originalHtmlRef.current;
-          childElement.removeAttribute("aria-label");
-          hasRevertedRef.current = true;
-        });
+      // Handle revertOnComplete
+      if (revertOnCompleteRef.current) {
+        if (maybePromise instanceof Promise) {
+          maybePromise.then(() => {
+            if (!isMounted || originalHtmlRef.current === null) return;
+            childElement.innerHTML = originalHtmlRef.current;
+            childElement.removeAttribute("aria-label");
+            hasRevertedRef.current = true;
+          });
+        } else {
+          console.warn(
+            "SplitText: revertOnComplete is enabled but onSplit did not return a promise. " +
+              "Return a promise (e.g., animate(...).finished) to revert after animation completes."
+          );
+        }
+      } else if (maybePromise instanceof Promise) {
+        console.warn(
+          "SplitText: onSplit returned a promise but revertOnComplete is not enabled. " +
+            "Add the revertOnComplete prop if you want to revert after the animation completes."
+        );
       }
     });
 

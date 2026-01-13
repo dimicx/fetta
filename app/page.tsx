@@ -130,6 +130,7 @@ export default function Home() {
           Revert After Complete
         </span>
         <SplitText
+          revertOnComplete
           onSplit={({ words }) => {
             // Return the animation promise - text reverts when it resolves
             return animate(
@@ -143,9 +144,11 @@ export default function Home() {
             ).finished;
           }}
         >
-          <h2 className="text-3xl font-semibold leading-snug text-white">
-            Smooth, performant animations powered by Motion
-          </h2>
+          <p className="text-lg leading-loose text-zinc-400">
+            Create beautiful animations with just a few lines of code. Motion
+            handles the complexity so you can focus on what matters
+            most—building great user experiences that delight and engage.
+          </p>
         </SplitText>
       </section>
 
