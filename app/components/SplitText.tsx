@@ -35,12 +35,10 @@ interface SplitTextProps {
 
 interface OriginalWordData {
   relativeLefts: number[];
-  wordWidth: number;
 }
 
 /**
- * Measure relative char positions within each word in original text,
- * plus the total width of each word.
+ * Measure relative char positions within each word in original text.
  */
 function measureOriginalPositions(element: HTMLElement): OriginalWordData[] {
   const range = document.createRange();
@@ -51,7 +49,6 @@ function measureOriginalPositions(element: HTMLElement): OriginalWordData[] {
 
   let currentWord: number[] = [];
   let wordStartLeft: number | null = null;
-  let wordEndRight: number | null = null;
 
   while ((node = walker.nextNode() as Text | null)) {
     const text = node.textContent || "";
@@ -60,18 +57,10 @@ function measureOriginalPositions(element: HTMLElement): OriginalWordData[] {
 
       if (char === " " || char === "\n" || char === "\t") {
         // End of word
-        if (
-          currentWord.length > 0 &&
-          wordStartLeft !== null &&
-          wordEndRight !== null
-        ) {
-          words.push({
-            relativeLefts: currentWord,
-            wordWidth: wordEndRight - wordStartLeft,
-          });
+        if (currentWord.length > 0) {
+          words.push({ relativeLefts: currentWord });
           currentWord = [];
           wordStartLeft = null;
-          wordEndRight = null;
         }
         continue;
       }
@@ -83,31 +72,22 @@ function measureOriginalPositions(element: HTMLElement): OriginalWordData[] {
       if (wordStartLeft === null) {
         wordStartLeft = rect.left;
       }
-      wordEndRight = rect.right;
 
       currentWord.push(rect.left - wordStartLeft);
     }
   }
 
   // Don't forget the last word
-  if (
-    currentWord.length > 0 &&
-    wordStartLeft !== null &&
-    wordEndRight !== null
-  ) {
-    words.push({
-      relativeLefts: currentWord,
-      wordWidth: wordEndRight - wordStartLeft,
-    });
+  if (currentWord.length > 0) {
+    words.push({ relativeLefts: currentWord });
   }
 
   return words;
 }
 
 /**
- * Apply compensation to match original text layout:
- * 1. Character kerning within words
- * 2. Word width compensation
+ * Apply kerning compensation to match original text layout.
+ * Skips large negative deltas which indicate the original text had a mid-word line break.
  */
 function applyCompensation(
   wordElements: HTMLElement[],
@@ -116,7 +96,6 @@ function applyCompensation(
   for (let w = 0; w < wordElements.length && w < originalWords.length; w++) {
     const wordEl = wordElements[w];
     const originalPositions = originalWords[w].relativeLefts;
-    const originalWordWidth = originalWords[w].wordWidth;
 
     const chars = Array.from(
       wordEl.querySelectorAll<HTMLElement>('[class*="split-char"]')
@@ -127,23 +106,115 @@ function applyCompensation(
     // Get the first char's position as reference
     const wordStartLeft = chars[0].getBoundingClientRect().left;
 
-    // Apply character position compensation (kerning) to ALL characters
+    // Track expected position to detect line breaks in original
+    let lastOriginalPos = 0;
+
+    // Apply character position compensation (kerning)
     for (let i = 1; i < chars.length && i < originalPositions.length; i++) {
+      const originalRelativeLeft = originalPositions[i];
+
+      // If original position went backwards significantly, it means there was a
+      // line break in the original text - skip compensation for this and subsequent chars
+      if (originalRelativeLeft < lastOriginalPos - 5) {
+        break;
+      }
+      lastOriginalPos = originalRelativeLeft;
+
       const currentRelativeLeft =
         chars[i].getBoundingClientRect().left - wordStartLeft;
-      const originalRelativeLeft = originalPositions[i];
       const delta = originalRelativeLeft - currentRelativeLeft;
-      chars[i].style.marginLeft = `${delta}px`;
+
+      // Only apply reasonable deltas (kerning adjustments are typically small)
+      if (Math.abs(delta) < 20) {
+        chars[i].style.marginLeft = `${delta}px`;
+      }
+    }
+  }
+}
+
+/**
+ * Split word elements at em-dashes/en-dashes into separate word elements.
+ * Returns updated word elements array and a Set of elements that should NOT
+ * have space before them (because they're the continuation of a dash-split word).
+ */
+function splitWordsAtDashes(
+  wordElements: HTMLElement[],
+  wordClass: string
+): { words: HTMLElement[]; noSpaceBefore: Set<HTMLElement> } {
+  const result: HTMLElement[] = [];
+  const noSpaceBefore = new Set<HTMLElement>();
+
+  wordElements.forEach((wordEl) => {
+    const text = wordEl.textContent || "";
+
+    // Check if word contains em-dash or en-dash
+    if (!text.includes("—") && !text.includes("–")) {
+      result.push(wordEl);
+      return;
     }
 
-    // Apply word width compensation
-    // Measure current word width after kerning compensation
-    const lastChar = chars[chars.length - 1];
-    const currentWordWidth =
-      lastChar.getBoundingClientRect().right - wordStartLeft;
-    const widthDelta = originalWordWidth - currentWordWidth;
-    lastChar.style.marginRight = `${widthDelta}px`;
-  }
+    // Get all char elements
+    const chars = Array.from(
+      wordEl.querySelectorAll<HTMLElement>('[class*="split-char"]')
+    );
+
+    // Find split points (after dashes)
+    const splitIndices: number[] = [0]; // Start with 0
+    chars.forEach((char, idx) => {
+      const charText = char.textContent || "";
+      if (charText === "—" || charText === "–") {
+        splitIndices.push(idx + 1); // Split AFTER the dash
+      }
+    });
+    splitIndices.push(chars.length); // End
+
+    // Create word elements for each segment
+    const newWordsFromThisWord: HTMLElement[] = [];
+    let isFirst = true;
+
+    for (let i = 0; i < splitIndices.length - 1; i++) {
+      const startIdx = splitIndices[i];
+      const endIdx = splitIndices[i + 1];
+
+      if (startIdx >= endIdx) continue;
+
+      const newWordEl = document.createElement("span");
+      newWordEl.className = wordClass || "split-word";
+      newWordEl.style.display = "inline-block";
+
+      for (let j = startIdx; j < endIdx; j++) {
+        newWordEl.appendChild(chars[j]);
+      }
+
+      if (newWordEl.childNodes.length > 0) {
+        newWordsFromThisWord.push(newWordEl);
+        result.push(newWordEl);
+        // Mark continuation segments (not the first) as needing no space before
+        if (!isFirst) {
+          noSpaceBefore.add(newWordEl);
+        }
+        isFirst = false;
+      }
+    }
+
+    // Replace original word element in parent with new word elements
+    if (wordEl.parentNode && newWordsFromThisWord.length > 0) {
+      const parent = wordEl.parentNode;
+      const insertBefore = wordEl.nextSibling;
+      wordEl.remove();
+
+      // Insert new word elements where the old one was
+      newWordsFromThisWord.forEach((w) => {
+        if (insertBefore) {
+          parent.insertBefore(w, insertBefore);
+        } else {
+          parent.appendChild(w);
+        }
+      });
+    }
+  });
+
+  return { words: result, noSpaceBefore };
 }
 
 /**
@@ -153,46 +224,50 @@ function applyCompensation(
 function redetectAndWrapLines(
   element: HTMLElement,
   wordElements: HTMLElement[],
-  lineClass: string
+  lineClass: string,
+  noSpaceBefore: Set<HTMLElement>
 ): HTMLElement[] {
   // First, flatten the structure - move all words out of line wrappers
-  // and remove the old line elements
   const oldLines = element.querySelectorAll<HTMLElement>(
     '[class*="split-line"]'
   );
 
-  // Collect all words and spaces between them
-  const wordsWithSpaces: (HTMLElement | Text)[] = [];
+  // Collect all words
+  const allWords: HTMLElement[] = [];
   oldLines.forEach((line) => {
-    const children = Array.from(line.childNodes);
-    children.forEach((child) => {
-      wordsWithSpaces.push(child as HTMLElement | Text);
-    });
+    const words = Array.from(
+      line.querySelectorAll<HTMLElement>('[class*="split-word"]')
+    );
+    allWords.push(...words);
   });
 
   // Remove old lines
   oldLines.forEach((line) => line.remove());
 
   // Temporarily add words directly to element to measure their positions
-  wordsWithSpaces.forEach((item) => element.appendChild(item));
+  allWords.forEach((word, idx) => {
+    element.appendChild(word);
+    // Add space between words, except for dash-split continuations
+    if (idx < allWords.length - 1 && !noSpaceBefore.has(allWords[idx + 1])) {
+      element.appendChild(document.createTextNode(" "));
+    }
+  });
 
   // Now detect which words are on which line by Y position
   const lineGroups: HTMLElement[][] = [];
   let currentLine: HTMLElement[] = [];
   let currentY: number | null = null;
 
-  wordElements.forEach((word) => {
+  allWords.forEach((word) => {
     const rect = word.getBoundingClientRect();
-    const wordY = Math.round(rect.top); // Round to avoid floating point issues
+    const wordY = Math.round(rect.top);
 
     if (currentY === null) {
       currentY = wordY;
       currentLine.push(word);
     } else if (Math.abs(wordY - currentY) < 5) {
-      // Same line (within 5px tolerance)
       currentLine.push(word);
     } else {
-      // New line
       lineGroups.push(currentLine);
       currentLine = [word];
       currentY = wordY;
@@ -206,7 +281,7 @@ function redetectAndWrapLines(
   // Clear the element
   element.innerHTML = "";
 
-  // Create new line wrappers with correct groupings
+  // Create new line wrappers
   const newLines: HTMLElement[] = [];
   lineGroups.forEach((words) => {
     const lineEl = document.createElement("span");
@@ -215,8 +290,8 @@ function redetectAndWrapLines(
 
     words.forEach((word, idx) => {
       lineEl.appendChild(word);
-      // Add space between words (except after last word)
-      if (idx < words.length - 1) {
+      // Add space between words, except for dash-split continuations
+      if (idx < words.length - 1 && !noSpaceBefore.has(words[idx + 1])) {
         lineEl.appendChild(document.createTextNode(" "));
       }
     });
@@ -295,24 +370,27 @@ export function SplitText({
       );
       console.log("After compensation:", childElement.scrollWidth);
 
-      // Re-detect lines after compensation and re-wrap words
+      // Split words at dashes so they can wrap naturally
+      const wordClass = optionsRef.current?.wordClass || "split-word";
+      const { words: updatedWords, noSpaceBefore } = splitWordsAtDashes(
+        splitResult.words as HTMLElement[],
+        wordClass
+      );
+
+      // Re-detect lines and re-wrap words
       const lineClass = optionsRef.current?.lineClass || "split-line";
       const newLines = redetectAndWrapLines(
         childElement,
-        splitResult.words as HTMLElement[],
-        lineClass
+        updatedWords,
+        lineClass,
+        noSpaceBefore
       );
-      console.log(
-        "After line re-detection:",
-        childElement.scrollWidth,
-        "lines:",
-        newLines.length
-      );
+      console.log("After line detection:", newLines.length, "lines");
 
-      // Create result with corrected lines
+      // Create result with updated words and lines
       const result: SplitResult = {
         chars: splitResult.chars,
-        words: splitResult.words,
+        words: updatedWords,
         lines: newLines,
       };
 
@@ -371,12 +449,20 @@ export function SplitText({
       // Apply per-word compensation (kerning + word width)
       applyCompensation(result.words as HTMLElement[], originalMeasurements);
 
-      // Re-detect lines after compensation and re-wrap words
+      // Split words at dashes so they can wrap naturally
+      const wordClass = optionsRef.current?.wordClass || "split-word";
+      const { words: updatedWords, noSpaceBefore } = splitWordsAtDashes(
+        result.words as HTMLElement[],
+        wordClass
+      );
+
+      // Re-detect lines and re-wrap words
       const lineClass = optionsRef.current?.lineClass || "split-line";
       redetectAndWrapLines(
         childElement,
-        result.words as HTMLElement[],
-        lineClass
+        updatedWords,
+        lineClass,
+        noSpaceBefore
       );
     };
 
@@ -419,7 +505,7 @@ export function SplitText({
   } as Record<string, unknown>);
 
   return (
-    <div ref={containerRef} style={{ visibility: "hidden", display: "flex" }}>
+    <div ref={containerRef} style={{ visibility: "hidden" }}>
       {clonedChild}
     </div>
   );
