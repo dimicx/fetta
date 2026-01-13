@@ -86,8 +86,9 @@ function measureOriginalPositions(element: HTMLElement): OriginalWordData[] {
 }
 
 /**
- * Apply kerning compensation to match original text layout.
- * Skips large negative deltas which indicate the original text had a mid-word line break.
+ * Apply kerning compensation using gap-based approach.
+ * Measures gaps between consecutive characters and applies margins to match original.
+ * This allows single-pass measurement since each margin only affects its own gap.
  */
 function applyCompensation(
   wordElements: HTMLElement[],
@@ -101,32 +102,26 @@ function applyCompensation(
       wordEl.querySelectorAll<HTMLElement>('[class*="split-char"]')
     );
 
-    if (chars.length === 0) continue;
+    if (chars.length < 2) continue;
 
-    // Get the first char's position as reference
-    const wordStartLeft = chars[0].getBoundingClientRect().left;
+    // Single pass: measure all current positions upfront
+    const positions = chars.map((c) => c.getBoundingClientRect().left);
 
-    // Track expected position to detect line breaks in original
-    let lastOriginalPos = 0;
-
-    // Apply character position compensation (kerning)
+    // Calculate and apply margins based on gap differences
     for (let i = 1; i < chars.length && i < originalPositions.length; i++) {
-      const originalRelativeLeft = originalPositions[i];
+      // Calculate original gap between consecutive chars
+      const originalGap = originalPositions[i] - originalPositions[i - 1];
 
-      // If original position went backwards significantly, it means there was a
-      // line break in the original text - skip compensation for this and subsequent chars
-      if (originalRelativeLeft < lastOriginalPos - 5) {
-        break;
-      }
-      lastOriginalPos = originalRelativeLeft;
+      // If original gap is negative (line break in original), skip remaining chars
+      if (originalGap < -5) break;
 
-      const currentRelativeLeft =
-        chars[i].getBoundingClientRect().left - wordStartLeft;
-      const delta = originalRelativeLeft - currentRelativeLeft;
+      const currentGap = positions[i] - positions[i - 1];
+      const delta = originalGap - currentGap;
 
-      // Only apply reasonable deltas (kerning adjustments are typically small)
+      // Apply reasonable kerning adjustments (round to avoid float issues)
       if (Math.abs(delta) < 20) {
-        chars[i].style.marginLeft = `${delta}px`;
+        const roundedDelta = Math.round(delta * 100) / 100;
+        chars[i].style.marginLeft = `${roundedDelta}px`;
       }
     }
   }
@@ -355,20 +350,14 @@ export function SplitText({
 
       // Measure original positions BEFORE splitting
       const originalMeasurements = measureOriginalPositions(childElement);
-      console.log("Before split:", childElement.scrollWidth);
 
       const splitResult = splitText(childElement, optionsRef.current);
-      console.log(
-        "After split, before compensation:",
-        childElement.scrollWidth
-      );
 
-      // Apply per-word compensation (kerning + word width)
+      // Apply per-word compensation (kerning)
       applyCompensation(
         splitResult.words as HTMLElement[],
         originalMeasurements
       );
-      console.log("After compensation:", childElement.scrollWidth);
 
       // Split words at dashes so they can wrap naturally
       const wordClass = optionsRef.current?.wordClass || "split-word";
@@ -385,7 +374,6 @@ export function SplitText({
         lineClass,
         noSpaceBefore
       );
-      console.log("After line detection:", newLines.length, "lines");
 
       // Create result with updated words and lines
       const result: SplitResult = {
@@ -438,32 +426,37 @@ export function SplitText({
       if (currentWidth === lastWidthRef.current) return;
       lastWidthRef.current = currentWidth;
 
-      // Restore original HTML and re-split
+      // Restore original HTML
       childElement.innerHTML = originalHtmlRef.current;
 
-      // Measure original positions BEFORE splitting
-      const originalMeasurements = measureOriginalPositions(childElement);
+      // Wait for layout to complete before measuring and splitting
+      requestAnimationFrame(() => {
+        if (hasRevertedRef.current) return;
 
-      const result = splitText(childElement, optionsRef.current);
+        // Measure original positions BEFORE splitting
+        const originalMeasurements = measureOriginalPositions(childElement);
 
-      // Apply per-word compensation (kerning + word width)
-      applyCompensation(result.words as HTMLElement[], originalMeasurements);
+        const result = splitText(childElement, optionsRef.current);
 
-      // Split words at dashes so they can wrap naturally
-      const wordClass = optionsRef.current?.wordClass || "split-word";
-      const { words: updatedWords, noSpaceBefore } = splitWordsAtDashes(
-        result.words as HTMLElement[],
-        wordClass
-      );
+        // Apply per-word compensation (kerning)
+        applyCompensation(result.words as HTMLElement[], originalMeasurements);
 
-      // Re-detect lines and re-wrap words
-      const lineClass = optionsRef.current?.lineClass || "split-line";
-      redetectAndWrapLines(
-        childElement,
-        updatedWords,
-        lineClass,
-        noSpaceBefore
-      );
+        // Split words at dashes so they can wrap naturally
+        const wordClass = optionsRef.current?.wordClass || "split-word";
+        const { words: updatedWords, noSpaceBefore } = splitWordsAtDashes(
+          result.words as HTMLElement[],
+          wordClass
+        );
+
+        // Re-detect lines and re-wrap words
+        const lineClass = optionsRef.current?.lineClass || "split-line";
+        redetectAndWrapLines(
+          childElement,
+          updatedWords,
+          lineClass,
+          noSpaceBefore
+        );
+      });
     };
 
     let skipFirst = true;

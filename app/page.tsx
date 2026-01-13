@@ -35,11 +35,11 @@ export default function Home() {
             most—building great user experiences that delight and engage.
           </p>
         </CustomSplitText>
-        <p className="text-lg leading-loose text-zinc-600">
+        {/* <p className="text-lg leading-loose text-zinc-600">
           Create beautiful animations with just a few lines of code. Motion
           handles the complexity so you can focus on what matters most—building
           great user experiences that delight and engage.
-        </p>
+        </p> */}
       </section>
       {/* Example 1: Staggered words with spring */}
       <section className="flex w-full max-w-2xl flex-col gap-4">
@@ -117,6 +117,11 @@ export default function Home() {
             most—building great user experiences that delight and engage.
           </p>
         </SplitText>
+        {/* <p className="text-lg leading-loose text-zinc-400">
+          Create beautiful animations with just a few lines of code. Motion
+          handles the complexity so you can focus on what matters most—building
+          great user experiences that delight and engage.
+        </p> */}
       </section>
 
       {/* Example 4: Revert after animation completes */}
