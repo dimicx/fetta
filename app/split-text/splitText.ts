@@ -140,6 +140,10 @@ export function splitText(
   // Set aria-label for accessibility
   element.setAttribute("aria-label", text);
 
+  // Disable ligatures permanently - this ensures consistent appearance
+  // before split, during split, and after revert (ligatures can't span multiple elements)
+  element.style.fontVariantLigatures = "none";
+
   // STEP 1: Measure original character positions BEFORE modifying DOM
   const measuredWords = measureOriginalText(element);
 
@@ -275,6 +279,8 @@ export function splitText(
     revert: () => {
       element.innerHTML = originalHTML;
       element.removeAttribute("aria-label");
+      // Keep ligatures disabled for consistent appearance
+      element.style.fontVariantLigatures = "none";
     },
   };
 }
