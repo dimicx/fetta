@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { splitText as motionSplitText } from "motion-plus";
 import { splitText as customSplitText } from "../split-text";
+import { Navigation } from "../components/Navigation";
 
 const DEMO_TEXT =
   "Create beautiful animations with just a few lines of code. Motion handles the complexity so you can focus on what matters most—building great user experiences that delight and engage.";

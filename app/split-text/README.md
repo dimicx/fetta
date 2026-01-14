@@ -21,10 +21,10 @@ SplitText splits text into individual characters, words, and lines while preserv
 ### Vanilla JavaScript
 
 ```typescript
-import { splitText } from "./split-text";
-import { animate, stagger } from "motion";
+import { splitText } from './split-text';
+import { animate, stagger } from 'motion';
 
-const element = document.querySelector("h1");
+const element = document.querySelector('h1');
 const result = splitText(element);
 
 animate(
@@ -37,39 +37,49 @@ animate(
 ### React
 
 ```tsx
-import { SplitText } from "./split-text";
-import { animate, stagger } from "motion";
+import { SplitText } from './split-text';
+import { animate, stagger } from 'motion';
 
 <SplitText
   onSplit={({ words }) => {
-    animate(words, { opacity: [0, 1], y: [20, 0] }, { delay: stagger(0.05) });
+    animate(
+      words,
+      { opacity: [0, 1], y: [20, 0] },
+      { delay: stagger(0.05) }
+    );
   }}
 >
   <h1>Animated Text</h1>
-</SplitText>;
+</SplitText>
 ```
 
 ## Documentation
 
 ### [Core API Documentation](./CORE_API.md)
-
 Complete reference for vanilla JavaScript/TypeScript usage:
-
 - Basic splitting
 - AutoSplit with ResizeObserver
 - RevertOnComplete with Promises
+- InView and Scroll integration
 - Memory management
 - TypeScript types
 
 ### [React Component Documentation](./REACT_API.md)
-
 Complete reference for React usage:
-
 - Component props
 - Lifecycle management
 - AutoSplit behavior
 - RevertOnComplete pattern
+- useInView and useScroll integration
 - Best practices
+
+### [Scroll & InView Integration Guide](./SCROLL_INTEGRATION.md)
+Complete guide for scroll-triggered and scroll-linked animations:
+- Trigger animations on viewport enter
+- Scroll-linked parallax effects
+- Colocated patterns (no state needed!)
+- React and vanilla examples
+- Common pitfalls and solutions
 
 ## Installation
 
@@ -79,7 +89,6 @@ cp -r app/split-text /your-project/
 ```
 
 Dependencies:
-
 - Motion (for animations)
 - React 19+ (for React component only)
 
@@ -95,11 +104,9 @@ animate(result.chars, { opacity: [0, 1] });
 ### Pattern 2: Simple Animation (React)
 
 ```tsx
-<SplitText
-  onSplit={({ chars }) => {
-    animate(chars, { opacity: [0, 1] });
-  }}
->
+<SplitText onSplit={({ chars }) => {
+  animate(chars, { opacity: [0, 1] });
+}}>
   <h1>Text</h1>
 </SplitText>
 ```
@@ -111,11 +118,11 @@ const result = splitText(element, {
   autoSplit: true,
   onResize: ({ lines }) => {
     animate(lines, { opacity: [0, 1] });
-  },
+  }
 });
 
 // Remember to cleanup!
-window.addEventListener("beforeunload", () => {
+window.addEventListener('beforeunload', () => {
   result.dispose();
 });
 ```
@@ -139,7 +146,7 @@ window.addEventListener("beforeunload", () => {
 const animation = animate(words, { opacity: [0, 1] });
 
 const result = splitText(element, {
-  revertOnComplete: animation.finished,
+  revertOnComplete: animation.finished
 });
 ```
 
@@ -159,14 +166,12 @@ const result = splitText(element, {
 ## Choosing Between Vanilla and React
 
 ### Use Vanilla JS/TS When:
-
 - Building with vanilla JS, Vue, Svelte, or other frameworks
 - Need full control over initialization timing
 - Want access to `onResize` callback
 - Integrating with custom animation systems
 
 ### Use React Component When:
-
 - Building React applications
 - Want automatic font loading and visibility management
 - Prefer declarative JSX syntax
@@ -191,13 +196,19 @@ const result = splitText(element, {
 ## Browser Support
 
 Requires modern browser features:
-
 - `ResizeObserver` (for autoSplit)
 - `Promise` support
 - `Range.getBoundingClientRect()`
 - `TreeWalker` API
 
 All evergreen browsers are supported (Chrome, Firefox, Safari, Edge).
+
+## Examples in This Project
+
+See working examples in:
+- `/app/page.tsx` - Multiple animation patterns with React
+- `/app/example.tsx` - Vanilla JS usage
+- `/app/comparison/page.tsx` - Side-by-side comparison
 
 ## API Surface
 
@@ -207,7 +218,7 @@ All evergreen browsers are supported (Chrome, Firefox, Safari, Edge).
 function splitText(
   element: HTMLElement,
   options?: SplitTextOptions
-): SplitResult;
+): SplitResult
 ```
 
 ### React Component

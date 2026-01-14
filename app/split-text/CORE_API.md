@@ -5,19 +5,19 @@ The `splitText` function is a vanilla JavaScript/TypeScript utility that splits 
 ## Installation
 
 ```typescript
-import { splitText } from "./splitText";
+import { splitText } from './splitText';
 ```
 
 ## Basic Usage
 
 ```typescript
-const element = document.querySelector("h1");
+const element = document.querySelector('h1');
 const result = splitText(element);
 
 // Access split elements
-console.log(result.chars); // Array of character spans
-console.log(result.words); // Array of word spans
-console.log(result.lines); // Array of line spans
+console.log(result.chars);  // Array of character spans
+console.log(result.words);  // Array of word spans
+console.log(result.lines);  // Array of line spans
 
 // Animate them
 animate(result.words, { opacity: [0, 1] });
@@ -35,7 +35,6 @@ animate(result.words, { opacity: [0, 1] });
 #### Returns
 
 `SplitResult` object containing:
-
 - `chars`: `HTMLSpanElement[]` - Array of character spans
 - `words`: `HTMLSpanElement[]` - Array of word spans
 - `lines`: `HTMLSpanElement[]` - Array of line spans
@@ -47,12 +46,12 @@ animate(result.words, { opacity: [0, 1] });
 ```typescript
 interface SplitTextOptions {
   // CSS class names for generated spans
-  charClass?: string; // Default: "split-char"
-  wordClass?: string; // Default: "split-word"
-  lineClass?: string; // Default: "split-line"
+  charClass?: string;      // Default: "split-char"
+  wordClass?: string;      // Default: "split-word"
+  lineClass?: string;      // Default: "split-line"
 
   // Auto-split on resize
-  autoSplit?: boolean; // Default: false
+  autoSplit?: boolean;     // Default: false
 
   // Callback when resize triggers re-split
   onResize?: (result: Omit<SplitResult, "revert" | "dispose">) => void;
@@ -83,9 +82,9 @@ const result = splitText(element);
 
 ```typescript
 const result = splitText(element, {
-  charClass: "char",
-  wordClass: "word",
-  lineClass: "line",
+  charClass: 'char',
+  wordClass: 'word',
+  lineClass: 'line'
 });
 ```
 
@@ -95,17 +94,16 @@ Automatically re-splits text when the parent container resizes:
 
 ```typescript
 const result = splitText(element, {
-  autoSplit: true,
+  autoSplit: true
 });
 
 // IMPORTANT: Must call dispose() when done to prevent memory leaks
-window.addEventListener("beforeunload", () => {
+window.addEventListener('beforeunload', () => {
   result.dispose();
 });
 ```
 
 **How it works:**
-
 - Observes the parent element for size changes
 - Only re-splits if width actually changed
 - Debounced (100ms) to prevent excessive re-splitting
@@ -121,11 +119,11 @@ const result = splitText(element, {
   onResize: ({ chars, words, lines }) => {
     // Optional: animate on resize
     animate(words, { opacity: [0, 1] });
-  },
+  }
 });
 
 // Don't forget to dispose!
-window.addEventListener("beforeunload", () => {
+window.addEventListener('beforeunload', () => {
   result.dispose();
 });
 ```
@@ -135,12 +133,13 @@ window.addEventListener("beforeunload", () => {
 Automatically revert to original HTML after animation completes:
 
 ```typescript
-const animation = animate(element.querySelectorAll(".word"), {
-  opacity: [0, 1],
-});
+const animation = animate(
+  element.querySelectorAll('.word'),
+  { opacity: [0, 1] }
+);
 
 const result = splitText(element, {
-  revertOnComplete: animation.finished, // Pass the promise
+  revertOnComplete: animation.finished  // Pass the promise
 });
 
 // Will auto-revert and dispose when animation finishes
@@ -152,7 +151,7 @@ const result = splitText(element, {
 const result = splitText(element);
 
 // Later... restore original HTML
-result.revert(); // Also calls dispose() automatically
+result.revert();  // Also calls dispose() automatically
 ```
 
 ### 7. Dispose Resources
@@ -161,7 +160,7 @@ result.revert(); // Also calls dispose() automatically
 const result = splitText(element, { autoSplit: true });
 
 // When done (e.g., component unmount, page navigation)
-result.dispose(); // Disconnects observers, clears timers
+result.dispose();  // Disconnects observers, clears timers
 ```
 
 ## Complete Examples
@@ -169,7 +168,7 @@ result.dispose(); // Disconnects observers, clears timers
 ### Example 1: Simple Animation
 
 ```typescript
-const element = document.querySelector("h1");
+const element = document.querySelector('h1');
 const result = splitText(element);
 
 animate(
@@ -182,13 +181,14 @@ animate(
 ### Example 2: Auto-Revert After Animation
 
 ```typescript
-const element = document.querySelector("h1");
-const animation = animate(element.querySelectorAll(".word"), {
-  opacity: [0, 1],
-});
+const element = document.querySelector('h1');
+const animation = animate(
+  element.querySelectorAll('.word'),
+  { opacity: [0, 1] }
+);
 
 const result = splitText(element, {
-  revertOnComplete: animation.finished,
+  revertOnComplete: animation.finished
 });
 
 // Text will automatically revert when animation completes
@@ -197,17 +197,17 @@ const result = splitText(element, {
 ### Example 3: Responsive Text Split
 
 ```typescript
-const element = document.querySelector("p");
+const element = document.querySelector('p');
 const result = splitText(element, {
   autoSplit: true,
   onResize: ({ lines }) => {
     // Re-animate when text reflows
     animate(lines, { opacity: [0, 1] });
-  },
+  }
 });
 
 // Cleanup on page navigation
-window.addEventListener("beforeunload", () => {
+window.addEventListener('beforeunload', () => {
   result.dispose();
 });
 ```
@@ -215,200 +215,13 @@ window.addEventListener("beforeunload", () => {
 ### Example 4: With Font Loading
 
 ```typescript
-const element = document.querySelector("h1");
+const element = document.querySelector('h1');
 
 document.fonts.ready.then(() => {
   const result = splitText(element);
   animate(result.chars, { opacity: [0, 1] });
 });
 ```
-
-## Integration with Motion Scroll/View APIs
-
-Trigger animations based on scroll position or viewport visibility using Motion's `inView` and `scroll` functions.
-
-### Pattern 1: inView Trigger (Basic)
-
-The most common pattern - animate when element enters viewport:
-
-```typescript
-import { splitText } from "./splitText";
-import { inView } from "motion";
-import { animate, stagger } from "motion";
-
-const element = document.querySelector("h1");
-const result = splitText(element);
-
-// Animate when element enters viewport
-inView(
-  element,
-  () => {
-    animate(
-      result.words,
-      { opacity: [0, 1], y: [20, 0] },
-      { delay: stagger(0.05) }
-    );
-  },
-  {
-    amount: 0.5, // Trigger when 50% visible
-  }
-);
-```
-
-By default, the callback fires just once when the element first enters the viewport.
-
-### Pattern 2: inView with Enter/Leave Animations
-
-Return a cleanup function to animate when leaving viewport:
-
-```typescript
-import { splitText } from "./splitText";
-import { inView } from "motion";
-import { animate, stagger } from "motion";
-
-const element = document.querySelector("h1");
-const result = splitText(element);
-
-inView(
-  element,
-  () => {
-    // Entering viewport
-    animate(
-      result.words,
-      { opacity: [0, 1], y: [20, 0] },
-      { delay: stagger(0.05) }
-    );
-
-    // Return cleanup function for leaving viewport
-    return () => {
-      animate(result.words, { opacity: 0 }, { duration: 0.3 });
-    };
-  },
-  { amount: 0.3 }
-);
-```
-
-### Pattern 3: Scroll-Linked Animation
-
-Create parallax or scroll-linked effects with the `scroll` function:
-
-```typescript
-import { splitText } from "./splitText";
-import { scroll } from "motion";
-
-const element = document.querySelector("h1");
-const result = splitText(element);
-
-// Link animation to scroll position
-scroll(
-  ({ y }) => {
-    result.words.forEach((word, i) => {
-      // Stagger based on word index
-      const progress = Math.max(0, Math.min(1, y.progress - i * 0.05));
-      word.style.opacity = progress.toString();
-      word.style.transform = `translateY(${(1 - progress) * 20}px)`;
-    });
-  },
-  {
-    target: element,
-    offset: ["start end", "end start"],
-  }
-);
-```
-
-### Pattern 4: Multiple Triggers with autoSplit
-
-When using `autoSplit`, re-setup observers in the `onResize` callback:
-
-```typescript
-import { splitText } from "./splitText";
-import { inView } from "motion";
-import { animate, stagger } from "motion";
-
-const element = document.querySelector("p");
-
-function setupInView(words) {
-  inView(
-    element,
-    () => {
-      animate(words, { opacity: [0, 1] }, { delay: stagger(0.03) });
-    },
-    { amount: 0.5 }
-  );
-}
-
-const result = splitText(element, {
-  autoSplit: true,
-  onResize: ({ words }) => {
-    // Re-setup inView when text re-splits
-    setupInView(words);
-  },
-});
-
-// Initial setup
-setupInView(result.words);
-
-// Cleanup on page unload
-window.addEventListener("beforeunload", () => {
-  result.dispose();
-});
-```
-
-### Pattern 5: Character Reveal on Scroll
-
-Animate individual characters when scrolling into view:
-
-```typescript
-import { splitText } from "./splitText";
-import { inView } from "motion";
-import { animate, stagger } from "motion";
-
-const element = document.querySelector("h1");
-const result = splitText(element);
-
-inView(
-  element,
-  () => {
-    animate(
-      result.chars,
-      {
-        opacity: [0, 1],
-        rotateY: [90, 0],
-        filter: ["blur(4px)", "blur(0px)"],
-      },
-      { delay: stagger(0.02) }
-    );
-  },
-  { amount: 0.3 }
-);
-```
-
-### Motion API Options
-
-#### inView Options
-
-```typescript
-{
-  root?: Element;      // Viewport element (defaults to window)
-  margin?: string;     // Extend/contract detection area (e.g., "0px 0px -100px 0px")
-  amount?: "some" | "all" | number; // How much of element must be visible (0-1)
-}
-```
-
-#### scroll Options
-
-```typescript
-{
-  target?: Element;    // Element to track
-  offset?: string[];   // Define start/end points (e.g., ["start end", "end start"])
-  axis?: "x" | "y";    // Scroll axis to track
-}
-```
-
-### Motion API Resources
-
-- [inView — Scroll-triggered animations](https://motion.dev/docs/inview)
-- [scroll() — Performant scroll-linked animations](https://motion.dev/docs/scroll)
 
 ## Important Notes
 
@@ -462,13 +275,197 @@ export interface SplitResult {
 }
 ```
 
+## Integration with Motion Scroll & InView
+
+### Using inView - Basic Trigger
+
+Animate when element enters viewport:
+
+```typescript
+import { splitText } from './splitText';
+import { inView } from 'motion';
+import { animate, stagger } from 'motion';
+
+const element = document.querySelector('h1');
+const result = splitText(element);
+
+// Animate when element enters viewport (fires once)
+inView(
+  element,
+  () => {
+    animate(
+      result.words,
+      { opacity: [0, 1], y: [20, 0] },
+      { delay: stagger(0.05) }
+    );
+  },
+  {
+    amount: 0.5  // Trigger when 50% visible
+  }
+);
+```
+
+### inView with Enter/Leave Animations
+
+```typescript
+const element = document.querySelector('h1');
+const result = splitText(element);
+
+inView(
+  element,
+  () => {
+    // Entering viewport
+    animate(
+      result.words,
+      { opacity: [0, 1], scale: [0.8, 1] },
+      { delay: stagger(0.05) }
+    );
+
+    // Return cleanup function for leaving viewport
+    return () => {
+      animate(
+        result.words,
+        { opacity: 0, scale: 0.8 },
+        { duration: 0.3 }
+      );
+    };
+  },
+  { amount: 0.3 }
+);
+```
+
+### Scroll-Linked Animation
+
+Link text animation to scroll position:
+
+```typescript
+import { scroll } from 'motion';
+
+const element = document.querySelector('h1');
+const result = splitText(element);
+
+// Link animation to scroll position
+scroll(
+  ({ y }) => {
+    result.words.forEach((word, i) => {
+      // Stagger based on word index
+      const progress = Math.max(0, Math.min(1, y.progress - (i * 0.05)));
+      word.style.opacity = progress.toString();
+      word.style.transform = `translateY(${(1 - progress) * 20}px)`;
+    });
+  },
+  {
+    target: element,
+    offset: ["start end", "end start"]
+  }
+);
+```
+
+### Character Reveal on Scroll
+
+```typescript
+const element = document.querySelector('h1');
+const result = splitText(element);
+
+inView(
+  element,
+  () => {
+    animate(
+      result.chars,
+      {
+        opacity: [0, 1],
+        rotateY: [90, 0],
+        filter: ['blur(4px)', 'blur(0px)']
+      },
+      { delay: stagger(0.02) }
+    );
+  },
+  { amount: 0.3 }
+);
+```
+
+### AutoSplit with InView Integration
+
+Re-setup inView when text re-splits:
+
+```typescript
+const element = document.querySelector('p');
+
+function setupInView(words: HTMLSpanElement[]) {
+  inView(
+    element,
+    () => {
+      animate(
+        words,
+        { opacity: [0, 1] },
+        { delay: stagger(0.03) }
+      );
+    },
+    { amount: 0.5 }
+  );
+}
+
+const result = splitText(element, {
+  autoSplit: true,
+  onResize: ({ words }) => {
+    // Re-setup inView when text re-splits
+    setupInView(words);
+  }
+});
+
+// Initial setup
+setupInView(result.words);
+
+// Cleanup on page unload
+window.addEventListener('beforeunload', () => {
+  result.dispose();
+});
+```
+
+### Scroll Progress with AutoSplit
+
+```typescript
+const element = document.querySelector('p');
+
+function setupScrollAnimation(words: HTMLSpanElement[]) {
+  scroll(
+    ({ y }) => {
+      words.forEach((word, i) => {
+        const progress = Math.max(0, y.progress - (i * 0.05));
+        word.style.opacity = progress.toString();
+      });
+    },
+    {
+      target: element,
+      offset: ["start end", "end start"]
+    }
+  );
+}
+
+const result = splitText(element, {
+  autoSplit: true,
+  onResize: ({ words }) => {
+    setupScrollAnimation(words);
+  }
+});
+
+setupScrollAnimation(result.words);
+```
+
 ## Browser Compatibility
 
 Requires:
-
 - `ResizeObserver` (for autoSplit)
+- `IntersectionObserver` (for Motion's inView)
 - `Promise` support
 - `Range.getBoundingClientRect()`
 - `TreeWalker`
 
 All modern browsers are supported.
+
+## See Also
+
+- [React Component Documentation](./REACT_API.md) - React usage with scroll/inView examples
+- [Motion Documentation](https://motion.dev) - Animation library
+- [inView Documentation](https://motion.dev/docs/inview) - Scroll-triggered animations
+- [scroll Documentation](https://motion.dev/docs/scroll) - Scroll-linked animations
