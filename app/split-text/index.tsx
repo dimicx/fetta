@@ -16,10 +16,12 @@ import {
 } from "react";
 
 interface SplitTextOptions {
+  type?: 'chars' | 'words' | 'lines' | 'chars,words' | 'words,lines' | 'chars,lines' | 'chars,words,lines';
   charClass?: string;
   wordClass?: string;
   lineClass?: string;
-  splitBy?: string;
+  propIndex?: boolean;
+  willChange?: boolean;
 }
 
 interface SplitTextProps {
@@ -28,6 +30,8 @@ interface SplitTextProps {
   onSplit: (
     result: Omit<SplitResult, "revert" | "dispose">
   ) => void | Promise<unknown>;
+  /** Called when autoSplit triggers a re-split on resize */
+  onResize?: (result: Omit<SplitResult, "revert" | "dispose">) => void;
   options?: SplitTextOptions;
   autoSplit?: boolean;
   /** When true, reverts to original HTML after onSplit's returned promise resolves */
@@ -42,6 +46,7 @@ interface SplitTextProps {
 export function SplitText({
   children,
   onSplit,
+  onResize,
   options,
   autoSplit = false,
   revertOnComplete = false,
@@ -51,11 +56,13 @@ export function SplitText({
 
   // Stable refs for callbacks and options
   const onSplitRef = useRef(onSplit);
+  const onResizeRef = useRef(onResize);
   const optionsRef = useRef(options);
   const revertOnCompleteRef = useRef(revertOnComplete);
 
   useLayoutEffect(() => {
     onSplitRef.current = onSplit;
+    onResizeRef.current = onResize;
     optionsRef.current = options;
     revertOnCompleteRef.current = revertOnComplete;
   });
@@ -84,6 +91,7 @@ export function SplitText({
       const result = splitText(childElement, {
         ...optionsRef.current,
         autoSplit,
+        onResize: onResizeRef.current,
       });
 
       // Store dispose function

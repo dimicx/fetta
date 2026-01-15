@@ -5,7 +5,8 @@
  */
 
 export interface SplitTextOptions {
-  splitBy?: string;
+  /** Split type: chars, words, lines, or combinations like "chars,words" */
+  type?: 'chars' | 'words' | 'lines' | 'chars,words' | 'words,lines' | 'chars,lines' | 'chars,words,lines';
   charClass?: string;
   wordClass?: string;
   lineClass?: string;
@@ -15,6 +16,10 @@ export interface SplitTextOptions {
   onResize?: (result: Omit<SplitResult, "revert" | "dispose">) => void;
   /** Auto-revert when promise resolves (e.g., animation.finished) */
   revertOnComplete?: Promise<unknown>;
+  /** Add CSS custom properties (--char-index, --word-index, --line-index) */
+  propIndex?: boolean;
+  /** Add will-change: transform, opacity to split elements for better animation performance */
+  willChange?: boolean;
 }
 
 export interface SplitResult {
@@ -25,6 +30,8 @@ export interface SplitResult {
   revert: () => void;
   /** Cleanup observers and timers (must be called when using autoSplit) */
   dispose: () => void;
+  /** Whether user prefers reduced motion */
+  prefersReducedMotion: boolean;
 }
 
 interface MeasuredChar {
@@ -41,6 +48,15 @@ interface MeasuredWord {
 
 // Characters that act as break points (word can wrap after these)
 const BREAK_CHARS = new Set(["—", "–"]);
+
+/**
+ * Segment text into grapheme clusters (properly handles emoji, accented chars, etc.)
+ * Uses Intl.Segmenter for modern browsers.
+ */
+function segmentGraphemes(text: string): string[] {
+  const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+  return [...segmenter.segment(text)].map(s => s.segment);
+}
 
 /**
  * Measure character positions in the original text using Range API.
@@ -73,31 +89,36 @@ function measureOriginalText(element: HTMLElement): MeasuredWord[] {
   while ((node = walker.nextNode() as Text | null)) {
     const text = node.textContent || "";
 
-    for (let i = 0; i < text.length; i++) {
-      const char = text[i];
+    // Segment into grapheme clusters for proper emoji/complex character handling
+    const graphemes = segmentGraphemes(text);
+    let charOffset = 0;
 
+    for (const grapheme of graphemes) {
       // Whitespace = word boundary (with space before next word)
-      if (char === " " || char === "\n" || char === "\t") {
+      if (grapheme === " " || grapheme === "\n" || grapheme === "\t") {
         pushWord();
+        charOffset += grapheme.length;
         continue;
       }
 
-      // Measure character position
-      range.setStart(node, i);
-      range.setEnd(node, i + 1);
+      // Measure character position using Range API
+      range.setStart(node, charOffset);
+      range.setEnd(node, charOffset + grapheme.length);
       const rect = range.getBoundingClientRect();
 
       if (wordStartLeft === null) {
         wordStartLeft = rect.left;
       }
 
-      currentWord.push({ char, left: rect.left });
+      currentWord.push({ char: grapheme, left: rect.left });
 
       // Break AFTER dash characters (dash stays with preceding text)
-      if (BREAK_CHARS.has(char)) {
+      if (BREAK_CHARS.has(grapheme)) {
         pushWord();
         noSpaceBeforeNext = true; // Next word continues without space
       }
+
+      charOffset += grapheme.length;
     }
   }
 
@@ -113,7 +134,8 @@ function measureOriginalText(element: HTMLElement): MeasuredWord[] {
 function createSpan(
   className?: string,
   index?: number,
-  display: "inline-block" | "block" = "inline-block"
+  display: "inline-block" | "block" = "inline-block",
+  options?: { propIndex?: boolean; willChange?: boolean; propName?: string }
 ): HTMLSpanElement {
   const span = document.createElement("span");
 
@@ -123,9 +145,19 @@ function createSpan(
 
   if (index !== undefined) {
     span.dataset.index = index.toString();
+
+    // Add CSS custom property if propIndex enabled
+    if (options?.propIndex && options?.propName) {
+      span.style.setProperty(`--${options.propName}-index`, index.toString());
+    }
   }
 
   span.style.display = display;
+
+  // Add will-change hint for better animation performance
+  if (options?.willChange) {
+    span.style.willChange = 'transform, opacity';
+  }
 
   return span;
 }
@@ -139,7 +171,8 @@ function performSplit(
   measuredWords: MeasuredWord[],
   charClass: string,
   wordClass: string,
-  lineClass: string
+  lineClass: string,
+  options?: { propIndex?: boolean; willChange?: boolean }
 ): {
   chars: HTMLSpanElement[];
   words: HTMLSpanElement[];
@@ -157,14 +190,22 @@ function performSplit(
 
   // STEP 2: Create word and character spans
   measuredWords.forEach((measuredWord, wordIndex) => {
-    const wordSpan = createSpan(wordClass, wordIndex);
+    const wordSpan = createSpan(wordClass, wordIndex, "inline-block", {
+      propIndex: options?.propIndex,
+      willChange: options?.willChange,
+      propName: 'word'
+    });
 
     if (measuredWord.noSpaceBefore) {
       noSpaceBeforeSet.add(wordSpan);
     }
 
     measuredWord.chars.forEach((measuredChar, charIndex) => {
-      const charSpan = createSpan(charClass, charIndex);
+      const charSpan = createSpan(charClass, charIndex, "inline-block", {
+        propIndex: options?.propIndex,
+        willChange: options?.willChange,
+        propName: 'char'
+      });
       charSpan.textContent = measuredChar.char;
 
       // Store expected gap from previous character (skip first char)
@@ -223,6 +264,10 @@ function performSplit(
   });
 
   // STEP 5: Detect lines by Y position (AFTER compensation)
+  // Calculate tolerance based on font size (30% of font size, min 5px)
+  const fontSize = parseFloat(getComputedStyle(element).fontSize);
+  const tolerance = Math.max(5, fontSize * 0.3);
+
   const lineGroups: HTMLSpanElement[][] = [];
   let currentLine: HTMLSpanElement[] = [];
   let currentY: number | null = null;
@@ -234,7 +279,7 @@ function performSplit(
     if (currentY === null) {
       currentY = wordY;
       currentLine.push(wordSpan);
-    } else if (Math.abs(wordY - currentY) < 5) {
+    } else if (Math.abs(wordY - currentY) < tolerance) {
       currentLine.push(wordSpan);
     } else {
       lineGroups.push(currentLine);
@@ -253,7 +298,11 @@ function performSplit(
   const allLines: HTMLSpanElement[] = [];
 
   lineGroups.forEach((words, lineIndex) => {
-    const lineSpan = createSpan(lineClass, lineIndex, "block");
+    const lineSpan = createSpan(lineClass, lineIndex, "block", {
+      propIndex: options?.propIndex,
+      willChange: options?.willChange,
+      propName: 'line'
+    });
     allLines.push(lineSpan);
 
     words.forEach((wordSpan, wordIdx) => {
@@ -283,17 +332,51 @@ function performSplit(
 export function splitText(
   element: HTMLElement,
   {
+    type = 'chars,words,lines',
     charClass = "split-char",
     wordClass = "split-word",
     lineClass = "split-line",
     autoSplit = false,
     onResize,
     revertOnComplete,
+    propIndex = false,
+    willChange = false,
   }: SplitTextOptions = {}
 ): SplitResult {
+  // Validation
+  if (!(element instanceof HTMLElement)) {
+    throw new Error('splitText: element must be an HTMLElement');
+  }
+
+  const text = element.textContent?.trim();
+  if (!text) {
+    console.warn('splitText: element has no text content');
+    return {
+      chars: [],
+      words: [],
+      lines: [],
+      revert: () => {},
+      dispose: () => {},
+      prefersReducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    };
+  }
+
+  if (autoSplit && !element.parentElement) {
+    console.warn('splitText: autoSplit requires a parent element. AutoSplit will not work.');
+  }
+
   // Store original HTML for revert
   const originalHTML = element.innerHTML;
-  const text = element.textContent || "";
+
+  // Detect user motion preferences
+  const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // TODO: Implement selective splitting based on type option
+  // For now, we always split all three types (chars, words, lines)
+  // Future: Parse type to determine which splits to perform
+  if (type !== 'chars,words,lines') {
+    console.warn(`splitText: type="${type}" is not yet implemented. Defaulting to "chars,words,lines".`);
+  }
 
   // State management (closure-based)
   let isActive = true;
@@ -322,7 +405,8 @@ export function splitText(
     measuredWords,
     charClass,
     wordClass,
-    lineClass
+    lineClass,
+    { propIndex, willChange }
   );
 
   // Store initial result
@@ -394,7 +478,8 @@ export function splitText(
             newMeasuredWords,
             charClass,
             wordClass,
-            lineClass
+            lineClass,
+            { propIndex, willChange }
           );
 
           // Update current result
@@ -422,7 +507,7 @@ export function splitText(
         if (debounceTimer) {
           clearTimeout(debounceTimer);
         }
-        debounceTimer = setTimeout(handleResize, 100);
+        debounceTimer = setTimeout(handleResize, 200);
       });
 
       resizeObserver.observe(target);
@@ -456,5 +541,6 @@ export function splitText(
     lines: currentLines,
     revert,
     dispose,
+    prefersReducedMotion,
   };
 }

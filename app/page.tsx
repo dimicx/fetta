@@ -8,7 +8,7 @@ import { Example } from "./example";
 export default function Home() {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-24 bg-zinc-950 px-8 py-24 font-sans">
-      <Example />
+      {/* <Example /> */}
       {/* Custom SplitText: Test with em-dash */}
       <section className="flex w-full max-w-2xl flex-col gap-4">
         <span className="text-xs font-medium uppercase tracking-widest text-emerald-500">
