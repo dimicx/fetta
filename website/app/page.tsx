@@ -5,7 +5,7 @@ import { SplitText } from "fetta/react";
 
 export default function Home() {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-24 bg-zinc-950 px-8 py-24 font-sans">
+    <div className="flex min-h-screen flex-col items-center justify-center gap-24 bg-fd-background px-8 py-24 font-sans">
       {/* Example 1: Em-dash test with line animation */}
       <section className="flex w-full max-w-2xl flex-col gap-4">
         <span className="text-xs font-medium uppercase tracking-widest text-emerald-500">
@@ -26,7 +26,7 @@ export default function Home() {
             );
           }}
         >
-          <p className="text-lg leading-loose text-zinc-400">
+          <p className="text-lg leading-loose text-fd-muted-foreground">
             Create beautiful animations with just a few lines of code. Motion
             handles the complexity so you can focus on what matters
             most—building great user experiences that delight and engage.
@@ -36,7 +36,7 @@ export default function Home() {
 
       {/* Example 2: Staggered words with spring */}
       <section className="flex w-full max-w-2xl flex-col gap-4">
-        <span className="text-xs font-medium uppercase tracking-widest text-zinc-500">
+        <span className="text-xs font-medium uppercase tracking-widest text-fd-muted-foreground">
           Staggered Words
         </span>
         <SplitText
@@ -53,7 +53,7 @@ export default function Home() {
             );
           }}
         >
-          <h1 className="text-4xl font-bold leading-tight tracking-tight text-white md:text-5xl">
+          <h1 className="text-4xl font-bold leading-tight tracking-tight text-fd-foreground md:text-5xl">
             Level up your animations with the all-in membership
           </h1>
         </SplitText>
@@ -61,7 +61,7 @@ export default function Home() {
 
       {/* Example 3: Character reveal with rotation */}
       <section className="flex w-full max-w-2xl flex-col gap-4">
-        <span className="text-xs font-medium uppercase tracking-widest text-zinc-500">
+        <span className="text-xs font-medium uppercase tracking-widest text-fd-muted-foreground">
           Character Reveal
         </span>
         <SplitText
@@ -78,7 +78,7 @@ export default function Home() {
             );
           }}
         >
-          <p className="text-2xl font-medium leading-relaxed text-zinc-300">
+          <p className="text-2xl font-medium leading-relaxed text-fd-foreground/80">
             Motion makes animation simple.
           </p>
         </SplitText>
@@ -86,7 +86,7 @@ export default function Home() {
 
       {/* Example 4: Lines with fade, autoSplit */}
       <section className="flex w-full max-w-2xl flex-col gap-4">
-        <span className="text-xs font-medium uppercase tracking-widest text-zinc-500">
+        <span className="text-xs font-medium uppercase tracking-widest text-fd-muted-foreground">
           Line by Line (autoSplit)
         </span>
         <SplitText
@@ -104,7 +104,7 @@ export default function Home() {
             );
           }}
         >
-          <p className="text-lg leading-loose text-zinc-400">
+          <p className="text-lg leading-loose text-fd-muted-foreground">
             Create beautiful animations with just a few lines of code. Motion
             handles the complexity so you can focus on what matters
             most—building great user experiences that delight and engage.
@@ -114,7 +114,7 @@ export default function Home() {
 
       {/* Example 5: Revert after animation completes */}
       <section className="flex w-full max-w-2xl flex-col gap-4">
-        <span className="text-xs font-medium uppercase tracking-widest text-zinc-500">
+        <span className="text-xs font-medium uppercase tracking-widest text-fd-muted-foreground">
           Revert After Complete
         </span>
         <SplitText
@@ -131,7 +131,7 @@ export default function Home() {
             );
           }}
         >
-          <p className="text-lg leading-loose text-zinc-400">
+          <p className="text-lg leading-loose text-fd-muted-foreground">
             Create beautiful animations with just a few lines of code. Motion
             handles the complexity so you can focus on what matters
             most—building great user experiences that delight and engage.
@@ -141,7 +141,7 @@ export default function Home() {
 
       {/* Example 6: Words with blur */}
       <section className="flex w-full max-w-2xl flex-col gap-4">
-        <span className="text-xs font-medium uppercase tracking-widest text-zinc-500">
+        <span className="text-xs font-medium uppercase tracking-widest text-fd-muted-foreground">
           Words with Blur
         </span>
         <SplitText
@@ -157,7 +157,7 @@ export default function Home() {
             );
           }}
         >
-          <h2 className="text-3xl font-semibold leading-snug text-white">
+          <h2 className="text-3xl font-semibold leading-snug text-fd-foreground">
             Smooth, performant animations powered by Motion
           </h2>
         </SplitText>
