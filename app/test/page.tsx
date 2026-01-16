@@ -1,19 +1,20 @@
 "use client";
 
-import { animate, stagger } from "motion";
+import { useRef } from "react";
+import { animate, stagger, scroll } from "motion";
 import { SplitText } from "splext/react";
-import { GsapSplitText } from "./gsap-split-text";
 
 export default function TestPage() {
+  const scrollTarget17 = useRef<HTMLDivElement>(null);
+  const scrollTarget18 = useRef<HTMLDivElement>(null);
+  const scrollTarget19 = useRef<HTMLDivElement>(null);
+
   return (
-    <div className="min-h-screen bg-zinc-950 px-8 py-24 font-sans">
-      <div className="mx-auto max-w-4xl space-y-16">
+    <div className="min-h-screen bg-zinc-950 px-8 py-24 font-sans relative">
+      <div className="mx-auto max-w-4xl space-y-16 relative">
         <h1 className="text-4xl font-bold text-white">
           SplitText Robustness Tests
         </h1>
-
-        {/* GSAP SplitText */}
-        <GsapSplitText />
 
         {/* Test 1: Emoji handling */}
         <section className="space-y-4">
@@ -744,6 +745,14 @@ export default function TestPage() {
                   { delay: stagger(0.03) }
                 );
               }}
+              onLeaveView={({ words }) => {
+                console.log("LeaveView triggered with", words.length, "words");
+                return animate(
+                  words,
+                  { opacity: 0 },
+                  { duration: 0.3, autoplay: false }
+                );
+              }}
             >
               <p className="text-lg leading-relaxed text-zinc-200">
                 This text automatically re-splits when you resize the browser
@@ -792,6 +801,112 @@ export default function TestPage() {
             </SplitText>
           </div>
         </section>
+
+        {/* Test 17: Scroll-Driven Animation */}
+        <section className="space-y-4">
+          <h2 className="text-2xl font-semibold text-emerald-400">
+            17. Scroll-Driven Animation (scroll function)
+          </h2>
+          <p className="text-sm text-zinc-500">
+            Animation progress bound to scroll position using motion&apos;s
+            scroll() function
+          </p>
+          <div className="py-64 relative">
+            <SplitText
+              ref={scrollTarget17}
+              onSplit={({ words }) => {
+                if (!scrollTarget17.current) return;
+                const animation = animate(
+                  words,
+                  { opacity: [0, 1], y: [50, 0] },
+                  { delay: stagger(0.05), duration: 1 }
+                );
+                scroll(animation, {
+                  target: scrollTarget17.current!,
+                  offset: ["start 85%", "start 50%"],
+                });
+              }}
+            >
+              <p className="text-3xl font-bold text-zinc-200">
+                Scroll to reveal each word progressively
+              </p>
+            </SplitText>
+          </div>
+        </section>
+
+        {/* Test 18: Scroll-Driven Character Reveal */}
+        {/* <section className="space-y-4">
+          <h2 className="text-2xl font-semibold text-emerald-400">
+            18. Scroll-Driven Character Reveal
+          </h2>
+          <p className="text-sm text-zinc-500">
+            Each character reveals as you scroll through the section
+          </p>
+          <div className="h-[300vh] relative" ref={scrollTarget18}>
+            <div className="sticky top-1/4">
+              <SplitText
+                onSplit={({ chars }) => {
+                  const animation = animate(
+                    chars,
+                    {
+                      opacity: [0, 1],
+                      scale: [0.5, 1],
+                      filter: ["blur(10px)", "blur(0px)"],
+                    },
+                    { delay: stagger(0.02), duration: 1 }
+                  );
+                  scroll(animation, {
+                    target: scrollTarget18.current!,
+                    offset: ["start end", "center center"],
+                  });
+                }}
+              >
+                <p className="text-4xl font-bold text-zinc-200">
+                  Character by character scroll reveal
+                </p>
+              </SplitText>
+            </div>
+          </div>
+        </section> */}
+
+        {/* Test 19: Scroll-Driven Line Animation */}
+        {/* <section className="space-y-4">
+          <h2 className="text-2xl font-semibold text-emerald-400">
+            19. Scroll-Driven Line Animation
+          </h2>
+          <p className="text-sm text-zinc-500">
+            Lines slide in from the left as you scroll
+          </p>
+          <div className="h-[250vh] relative" ref={scrollTarget19}>
+            <div className="sticky top-1/4 max-w-2xl">
+              <SplitText
+                onSplit={({ lines }) => {
+                  const animation = animate(
+                    lines,
+                    {
+                      opacity: [0, 1],
+                      x: [-100, 0],
+                    },
+                    { delay: stagger(0.1), duration: 1 }
+                  );
+                  scroll(animation, {
+                    target: scrollTarget19.current!,
+                    offset: ["start end", "center center"],
+                  });
+                }}
+              >
+                <div className="text-xl leading-relaxed text-zinc-200">
+                  <p>
+                    Each line of this paragraph slides in from the left as you
+                    scroll. The animation progress is directly tied to your
+                    scroll position, creating a smooth and satisfying reveal
+                    effect.
+                  </p>
+                </div>
+              </SplitText>
+            </div>
+          </div>
+        </section> */}
 
         <div className="border-t border-zinc-800 pt-8">
           <p className="text-center text-sm text-zinc-500">

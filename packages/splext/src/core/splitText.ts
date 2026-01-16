@@ -163,6 +163,7 @@ function createSpan(
   }
 
   span.style.display = display;
+  span.style.position = "relative";
 
   // Add will-change hint for better animation performance
   if (options?.willChange) {

@@ -1,1 +1,1 @@
-export { splitText } from './chunk-XSMWGDBM.js';
+export { splitText } from './chunk-OI2DURYO.js';

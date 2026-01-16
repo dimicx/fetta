@@ -87,6 +87,7 @@ function createSpan(className, index, display = "inline-block", options) {
     }
   }
   span.style.display = display;
+  span.style.position = "relative";
   if (options == null ? void 0 : options.willChange) {
     span.style.willChange = "transform, opacity";
   }

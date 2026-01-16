@@ -1,6 +1,7 @@
 import { splitText, SplitResult } from "../core/splitText";
 import {
   cloneElement,
+  forwardRef,
   isValidElement,
   ReactElement,
   useCallback,
@@ -109,18 +110,35 @@ function normalizeToPromise(result: CallbackReturn): Promise<unknown> | null {
  * Uses the optimized splitText that handles kerning compensation
  * and dash splitting in a single pass.
  */
-export function SplitText({
-  children,
-  onSplit,
-  onResize,
-  options,
-  autoSplit = false,
-  revertOnComplete = false,
-  inView,
-  onInView,
-  onLeaveView,
-}: SplitTextProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
+export const SplitText = forwardRef<HTMLDivElement, SplitTextProps>(
+  function SplitText(
+    {
+      children,
+      onSplit,
+      onResize,
+      options,
+      autoSplit = false,
+      revertOnComplete = false,
+      inView,
+      onInView,
+      onLeaveView,
+    },
+    forwardedRef
+  ) {
+    const containerRef = useRef<HTMLDivElement>(null);
+
+    // Merge internal ref with forwarded ref
+    const mergedRef = useCallback(
+      (node: HTMLDivElement | null) => {
+        containerRef.current = node;
+        if (typeof forwardedRef === "function") {
+          forwardedRef(node);
+        } else if (forwardedRef) {
+          forwardedRef.current = node;
+        }
+      },
+      [forwardedRef]
+    );
   const [childElement, setChildElement] = useState<HTMLElement | null>(null);
   const [isInView, setIsInView] = useState(false);
 
@@ -300,8 +318,12 @@ export function SplitText({
   } as Record<string, unknown>);
 
   return (
-    <div ref={containerRef} style={{ visibility: "hidden" }}>
+    <div
+      ref={mergedRef}
+      style={{ visibility: "hidden", position: "relative" }}
+    >
       {clonedChild}
     </div>
   );
-}
+  }
+);

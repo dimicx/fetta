@@ -1,4 +1,4 @@
-import * as react_jsx_runtime from 'react/jsx-runtime';
+import * as react from 'react';
 import { ReactElement } from 'react';
 export { SplitResult, SplitTextOptions } from './index.js';
 
@@ -58,6 +58,6 @@ interface SplitTextProps {
  * Uses the optimized splitText that handles kerning compensation
  * and dash splitting in a single pass.
  */
-declare function SplitText({ children, onSplit, onResize, options, autoSplit, revertOnComplete, inView, onInView, onLeaveView, }: SplitTextProps): react_jsx_runtime.JSX.Element | null;
+declare const SplitText: react.ForwardRefExoticComponent<SplitTextProps & react.RefAttributes<HTMLDivElement>>;
 
 export { type SplitElements, SplitText };
