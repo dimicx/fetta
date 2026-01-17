@@ -1,68 +1,62 @@
 ---
 title: Installation
-description: Install fetta using your preferred package manager.
+description: Get started with Fetta in under a minute.
 ---
 
 import { Tab, Tabs } from 'fumadocs-ui/components/tabs';
 
 # Installation
 
-Install fetta using your preferred package manager:
-
 <Tabs items={['pnpm', 'bun', 'npm', 'yarn']}>
   <Tab value="pnpm">
-```bash
+```bash title="Terminal"
 pnpm add fetta
 ```
   </Tab>
   <Tab value="bun">
-```bash
+```bash title="Terminal"
 bun add fetta
 ```
   </Tab>
   <Tab value="npm">
-```bash
+```bash title="Terminal"
 npm install fetta
 ```
   </Tab>
   <Tab value="yarn">
-```bash
+```bash title="Terminal"
 yarn add fetta
 ```
   </Tab>
 </Tabs>
 
+## Quick Start
+
+### React
+
+```tsx title="App.tsx"
+import { SplitText } from 'fetta/react';
+import { animate, stagger } from 'motion';
+
+<SplitText
+  onSplit={({ chars }) => {
+    animate(chars, { opacity: [0, 1] }, { delay: stagger(0.02) });
+  }}
+>
+  <h1>Hello world</h1>
+</SplitText>
+```
+
+### Vanilla JavaScript
+
+```ts title="main.ts"
+import { splitText } from 'fetta';
+
+const { chars } = splitText(document.querySelector('h1'));
+// Animate with any library
+```
+
 ## Requirements
 
 - **Node.js** 18+
 - **React** 18+ (for React component, optional)
-
-## Browser Support
-
-fetta requires these modern browser features:
-
-- `ResizeObserver`
-- `Intl.Segmenter`
-- `Range.getBoundingClientRect()`
-
-All evergreen browsers are supported (Chrome, Firefox, Safari, Edge).
-
-## Imports
-
-### Vanilla JavaScript
-
-```typescript
-import { splitText } from 'fetta';
-```
-
-### React
-
-```tsx
-import { SplitText } from 'fetta/react';
-```
-
-### Types
-
-```typescript
-import type { SplitTextOptions, SplitTextResult } from 'fetta';
-```
