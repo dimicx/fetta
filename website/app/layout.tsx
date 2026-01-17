@@ -22,7 +22,7 @@ const quantico = Quantico({
 
 const serif = EB_Garamond({
   variable: "--font-serif",
-  weight: ["400"],
+  weight: ["400", "500"],
   subsets: ["latin"],
   style: ["normal", "italic"],
 });

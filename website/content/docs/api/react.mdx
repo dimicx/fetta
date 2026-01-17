@@ -1,13 +1,13 @@
 ---
 title: SplitText (React)
-description: React component wrapper with automatic lifecycle management and viewport detection.
+description: React component with automatic lifecycle management and viewport detection.
 ---
 
 # SplitText (React)
 
-React component wrapper with automatic lifecycle management and viewport detection.
+React component wrapper with lifecycle management and viewport detection.
 
-```tsx
+```tsx title="App.tsx"
 import { SplitText } from 'fetta/react';
 ```
 
@@ -30,7 +30,7 @@ import { SplitText } from 'fetta/react';
 
 All callbacks receive the same result object:
 
-```typescript
+```ts
 interface SplitTextElements {
   chars: HTMLSpanElement[];
   words: HTMLSpanElement[];
@@ -41,7 +41,12 @@ interface SplitTextElements {
 
 ## Basic Example
 
-```tsx
+Wrap any element with `SplitText` and use the `onSplit` callback to animate.
+
+```tsx title="App.tsx"
+import { SplitText } from 'fetta/react';
+import { animate, stagger } from 'motion';
+
 <SplitText
   onSplit={({ words }) => {
     animate(words, { opacity: [0, 1], y: [20, 0] }, { delay: stagger(0.05) });
@@ -53,9 +58,9 @@ interface SplitTextElements {
 
 ## Viewport Detection
 
-Use the built-in `inView` prop for scroll-triggered animations:
+Use the `inView` prop for scroll-triggered animations. Set initial styles in `onSplit`, then animate in `onInView`.
 
-```tsx
+```tsx title="App.tsx"
 <SplitText
   onSplit={({ words }) => {
     words.forEach(w => w.style.opacity = '0');
@@ -79,9 +84,9 @@ Use the built-in `inView` prop for scroll-triggered animations:
 
 ## Auto-Revert
 
-Return an animation from `onSplit` or `onInView` to enable auto-revert:
+Enable `revertOnComplete` and return an animation from your callback. The original HTML is restored when the animation finishes.
 
-```tsx
+```tsx title="App.tsx"
 <SplitText
   revertOnComplete
   onSplit={({ words }) => {
@@ -94,7 +99,13 @@ Return an animation from `onSplit` or `onInView` to enable auto-revert:
 
 ## With Ref (Scroll-Driven)
 
-```tsx
+Use a ref to link scroll-driven animations with Motion's `scroll()` function.
+
+```tsx title="App.tsx"
+import { useRef } from 'react';
+import { SplitText } from 'fetta/react';
+import { animate, scroll, stagger } from 'motion';
+
 function ScrollAnimation() {
   const containerRef = useRef<HTMLDivElement>(null);
 

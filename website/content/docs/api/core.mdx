@@ -7,10 +7,10 @@ description: The core function for splitting text into characters, words, and li
 
 The core function for splitting text into characters, words, and lines.
 
-```typescript
+```ts title="main.ts"
 import { splitText } from 'fetta';
 
-const result = splitText(element, options);
+const { chars, words, lines } = splitText(element, options);
 ```
 
 ## Parameters
@@ -35,7 +35,7 @@ const result = splitText(element, options);
 
 ## Return Value
 
-```typescript
+```ts
 interface SplitTextResult {
   chars: HTMLSpanElement[];   // Character elements
   words: HTMLSpanElement[];   // Word elements
@@ -49,7 +49,12 @@ interface SplitTextResult {
 
 ### Basic Split
 
-```typescript
+Split text and animate the result with any animation library.
+
+```ts title="main.ts"
+import { splitText } from 'fetta';
+import { animate } from 'motion';
+
 const result = splitText(element);
 
 animate(result.words, { opacity: [0, 1] });
@@ -57,7 +62,9 @@ animate(result.words, { opacity: [0, 1] });
 
 ### With Auto-Revert
 
-```typescript
+Pass a Promise to `revertOnComplete` to restore the original HTML when it resolves.
+
+```ts title="main.ts"
 const animation = animate(words, { opacity: [0, 1] });
 
 splitText(element, {
@@ -67,7 +74,9 @@ splitText(element, {
 
 ### Responsive Split
 
-```typescript
+Enable `autoSplit` to re-split text when the container resizes. Call `dispose()` to cleanup observers when done.
+
+```ts title="main.ts"
 const result = splitText(element, {
   autoSplit: true,
   onResize: ({ lines }) => {
@@ -81,11 +90,13 @@ result.dispose();
 
 ### With CSS Variables
 
-```typescript
+Enable `propIndex` to add `--char-index`, `--word-index`, and `--line-index` CSS variables to each element.
+
+```ts title="main.ts"
 splitText(element, { propIndex: true });
 ```
 
-```css
+```css title="styles.css"
 .split-char {
   animation-delay: calc(var(--char-index) * 0.05s);
 }

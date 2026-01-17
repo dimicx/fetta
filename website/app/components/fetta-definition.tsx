@@ -38,14 +38,14 @@ export function FettaDefinition() {
   return (
     <div>
       <div className="flex flex-col gap-3">
-        <span className="font-serif text-4xl italic">fetta</span>
+        <span className="font-serif font-medium text-4xl italic">fetta</span>
         <div className="text-sm font-medium flex flex-col gap-1">
           <div className="flex items-center gap-2">
             <span className="h-4">
               <ItalianFlag />
             </span>
             <span>
-              <em>Noun</em> – <span>/&apos;fetːa/</span>
+              <em>Noun</em> · <span>/&apos;fetːa/</span>
             </span>
             <motion.button
               onClick={playPronunciation}
