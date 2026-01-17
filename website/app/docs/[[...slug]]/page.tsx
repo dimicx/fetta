@@ -19,8 +19,8 @@ export default async function Page(props: {
 
   return (
     <DocsPage toc={page.data.toc} tableOfContent={{ style: "clerk" }}>
-      <DocsTitle>{page.data.title}</DocsTitle>
-      <DocsDescription>{page.data.description}</DocsDescription>
+      {/* <DocsTitle>{page.data.title}</DocsTitle>
+      <DocsDescription>{page.data.description}</DocsDescription> */}
       <DocsBody>
         <MDX components={{ ...defaultMdxComponents }} />
       </DocsBody>

@@ -3,21 +3,34 @@ title: Installation
 description: Install fetta using your preferred package manager.
 ---
 
+import { Tab, Tabs } from 'fumadocs-ui/components/tabs';
+
 # Installation
 
 Install fetta using your preferred package manager:
 
-```bash npm
-npm install fetta
-```
-
-```bash pnpm
+<Tabs items={['pnpm', 'bun', 'npm', 'yarn']}>
+  <Tab value="pnpm">
+```bash
 pnpm add fetta
 ```
-
-```bash yarn
+  </Tab>
+  <Tab value="bun">
+```bash
+bun add fetta
+```
+  </Tab>
+  <Tab value="npm">
+```bash
+npm install fetta
+```
+  </Tab>
+  <Tab value="yarn">
+```bash
 yarn add fetta
 ```
+  </Tab>
+</Tabs>
 
 ## Requirements
 
