@@ -1,7 +1,11 @@
+import { DocsLayout } from "fumadocs-ui/layouts/docs";
 import { RootProvider } from "fumadocs-ui/provider/next";
 import type { Metadata } from "next";
 import { EB_Garamond, IBM_Plex_Mono, Inter, Quantico } from "next/font/google";
 import "./globals.css";
+import { source } from "@/app/source";
+import { FettaLogo } from "./components/icons/fetta-logo";
+import { SidebarSeparator } from "./components/sidebar-separator";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -43,7 +47,27 @@ export default function RootLayout({
       <body
         className={`${inter.variable} ${ibmPlexMono.variable} ${quantico.variable} ${serif.variable} antialiased relative`}
       >
-        <RootProvider>{children}</RootProvider>
+        <RootProvider>
+          <DocsLayout
+            tree={source.pageTree}
+            nav={{
+              title: (
+                <span className="h-5 block pl-px">
+                  <FettaLogo />
+                </span>
+              ),
+              url: "/",
+            }}
+            githubUrl="https://github.com/dimicx/fetta"
+            sidebar={{
+              components: {
+                Separator: SidebarSeparator,
+              },
+            }}
+          >
+            {children}
+          </DocsLayout>
+        </RootProvider>
       </body>
     </html>
   );
