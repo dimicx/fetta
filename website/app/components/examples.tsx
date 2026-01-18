@@ -239,7 +239,7 @@ export function ResponsiveSplit() {
         }}
       >
         <p className="text-lg w-full text-center">
-          Resize the window to see this text re-split and animate again.
+          This text reflows naturally at any width, with lines recalculated on resize.
         </p>
       </SplitText>
     </div>
@@ -378,7 +378,7 @@ export function AutoRevertVanilla() {
 }
 
 const RESPONSIVE_TEXT =
-  "Resize the window to see this text re-split and animate again.";
+  "This text reflows naturally at any width, animating again when lines change.";
 
 export function ResponsiveSplitVanilla() {
   const ref = useRef<HTMLParagraphElement>(null);
