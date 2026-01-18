@@ -62,7 +62,14 @@ interface MeasuredWord {
 }
 
 // Characters that act as break points (word can wrap after these)
-const BREAK_CHARS = new Set(["—", "–"]);
+const BREAK_CHARS = new Set([
+  "—", // em-dash
+  "–", // en-dash
+  "-", // hyphen
+  "/", // slash
+  "‒", // figure dash (U+2012)
+  "―", // horizontal bar (U+2015)
+]);
 
 /**
  * Normalize various animation return types to a Promise.
