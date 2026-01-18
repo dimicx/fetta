@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import { splitText, type SplitTextResult } from "fetta";
 import { SplitText } from "fetta/react";
-import { animate, stagger } from "motion";
+import { animate, stagger, scroll } from "motion";
 import gsap from "gsap";
 
 export function BasicFadeIn() {
@@ -58,21 +58,105 @@ export function LineByLine() {
 
 export function ScrollTriggered() {
   return (
-    <SplitText
-      onSplit={({ words }) => {
-        words.forEach((w) => (w.style.opacity = "0"));
-      }}
-      inView={{ amount: 0.5, once: true }}
-      onInView={({ words }) =>
-        animate(
-          words,
-          { opacity: [0, 1], y: [30, 0] },
-          { delay: stagger(0.03) },
-        )
-      }
+    <div className="h-full w-full overflow-y-auto fd-scroll-container">
+      <div className="flex flex-col items-center justify-center h-full text-fd-muted-foreground">
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="24"
+          height="24"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="mb-2 animate-bounce"
+        >
+          <path d="M12 5v14" />
+          <path d="m19 12-7 7-7-7" />
+        </svg>
+        <span className="text-sm">Scroll down</span>
+      </div>
+      <div className="flex items-center justify-center h-full">
+        <SplitText
+          onSplit={({ words }) => {
+            words.forEach((w) => (w.style.opacity = "0"));
+          }}
+          inView={{ amount: 0.5, once: true }}
+          onInView={({ words }) =>
+            animate(
+              words,
+              { opacity: [0, 1], y: [30, 0] },
+              { delay: stagger(0.03) },
+            )
+          }
+        >
+          <h2 className="text-2xl font-bold my-0!">Reveals on scroll</h2>
+        </SplitText>
+      </div>
+    </div>
+  );
+}
+
+export function ScrollDriven() {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const targetRef = useRef<HTMLDivElement>(null);
+
+  return (
+    <div
+      className="h-full w-full overflow-y-auto fd-scroll-container relative"
+      ref={containerRef}
     >
-      <h2 className="text-2xl font-bold my-0!">Reveals on scroll</h2>
-    </SplitText>
+      <div className="flex flex-col items-center justify-center h-full text-fd-muted-foreground">
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="24"
+          height="24"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="mb-2 animate-bounce"
+        >
+          <path d="M12 5v14" />
+          <path d="m19 12-7 7-7-7" />
+        </svg>
+        <span className="text-sm">Scroll to animate</span>
+      </div>
+      <div className="flex items-center justify-center min-h-full">
+        <div ref={targetRef}>
+          <SplitText
+            onSplit={({ words }) => {
+              const container = containerRef.current;
+              const target = targetRef.current;
+              if (!container || !target) return;
+
+              const animation = animate(
+                words.map((word, i) => [
+                  word,
+                  { opacity: [0, 1], y: [20, 0] },
+                  { duration: 0.5, at: i * 0.1, ease: "linear" },
+                ]),
+              );
+
+              scroll(animation, {
+                container,
+                target,
+                offset: ["start 85%", "start 20%"],
+              });
+            }}
+            options={{ type: "words" }}
+          >
+            <p className="text-2xl font-bold text-center max-w-xs">
+              Each word reveals as you scroll through this container
+            </p>
+          </SplitText>
+        </div>
+      </div>
+      <div className="h-full" />
+    </div>
   );
 }
 
@@ -168,7 +252,11 @@ export function AutoRevertVanilla() {
 
     splitText(ref.current, {
       onSplit: ({ words }) =>
-        animate(words, { opacity: [0, 1], y: [20, 0] }, { delay: stagger(0.05) }),
+        animate(
+          words,
+          { opacity: [0, 1], y: [20, 0] },
+          { delay: stagger(0.05) },
+        ),
       revertOnComplete: true,
     });
   }, []);

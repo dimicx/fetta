@@ -4,7 +4,7 @@ description: Common animation patterns with Fetta and React.
 ---
 
 import { Tab, Tabs } from 'fumadocs-ui/components/tabs';
-import { BasicFadeIn, CharacterReveal, LineByLine, ScrollTriggered, AutoRevert } from "../../app/components/examples";
+import { BasicFadeIn, CharacterReveal, LineByLine, ScrollTriggered, ScrollDriven, AutoRevert } from "../../app/components/examples";
 import { ExampleWrapper } from "../../app/components/example-wrapper";
 
 # React Examples
@@ -152,6 +152,49 @@ Use `inView` to detect when the element enters the viewport, and `onInView` to t
 >
   <h2>Reveals on scroll</h2>
 </SplitText>
+```
+  </Tab>
+</Tabs>
+
+## Scroll-Driven
+
+Link animations to scroll progress using Motion's `scroll()` function. The animation plays as the target element moves through the viewport.
+
+<Tabs items={['Preview', 'Code']}>
+  <Tab value="Preview" className="p-0 h-[240px] lg:h-[300px]">
+    <div className="bg-fd-card rounded-xl">
+      <ExampleWrapper>
+        <ScrollDriven />
+      </ExampleWrapper>
+    </div>
+  </Tab>
+  <Tab value="Code" className="[&_figure]:h-[240px]! [&_figure]:lg:h-[300px]! [&_figure_[role=region]]:max-h-[240px]! [&_figure_[role=region]]:lg:max-h-[300px]!">
+```tsx
+import { scroll, animate } from 'motion';
+
+const targetRef = useRef<HTMLDivElement>(null);
+
+<div ref={targetRef}>
+  <SplitText
+    onSplit={({ words }) => {
+      const target = targetRef.current;
+      if (!target) return;
+
+      const animation = animate(
+        words.map((word, i) => [
+          word,
+          { opacity: [0, 1], y: [20, 0] },
+          { duration: 0.5, at: i * 0.1, ease: 'linear' }
+        ])
+      );
+
+      scroll(animation, { target, offset: ['start 85%', 'start 20%'] });
+    }}
+    options={{ type: 'words' }}
+  >
+    <p>Each word reveals as you scroll</p>
+  </SplitText>
+</div>
 ```
   </Tab>
 </Tabs>
