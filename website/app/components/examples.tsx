@@ -1,10 +1,23 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { splitText, type SplitTextResult } from "fetta";
 import { SplitText } from "fetta/react";
 import { animate, stagger, scroll } from "motion";
 import gsap from "gsap";
+
+function StatusIndicator({ status }: { status: "animating" | "reverted" }) {
+  return (
+    <div className="absolute top-3 left-3 flex items-center gap-1.5 text-xs text-fd-muted-foreground">
+      <div
+        className={`size-2 rounded-full transition-colors ${
+          status === "reverted" ? "bg-emerald-500" : "bg-amber-500"
+        }`}
+      />
+      <span>{status === "animating" ? "Animating" : "Reverted"}</span>
+    </div>
+  );
+}
 
 export function BasicFadeIn() {
   return (
@@ -161,19 +174,26 @@ export function ScrollDriven() {
 }
 
 export function AutoRevert() {
+  const [status, setStatus] = useState<"animating" | "reverted">("animating");
+
   return (
-    <SplitText
-      onSplit={({ words }) =>
-        animate(
-          words,
-          { opacity: [0, 1], y: [20, 0] },
-          { delay: stagger(0.05) },
-        )
-      }
-      revertOnComplete
-    >
-      <h2 className="text-3xl font-bold my-0!">Auto-revert after animation</h2>
-    </SplitText>
+    <>
+      <StatusIndicator status={status} />
+      <SplitText
+        onSplit={({ words }) => {
+          const animation = animate(
+            words,
+            { opacity: [0, 1], y: [20, 0] },
+            { delay: stagger(0.05) },
+          );
+          animation.finished.then(() => setStatus("reverted"));
+          return animation;
+        }}
+        revertOnComplete
+      >
+        <h2 className="text-3xl font-bold my-0!">Auto-revert after animation</h2>
+      </SplitText>
+    </>
   );
 }
 
@@ -315,28 +335,36 @@ const AUTO_REVERT_TEXT = "Auto-revert after animation";
 
 export function AutoRevertVanilla() {
   const ref = useRef<HTMLHeadingElement>(null);
+  const [status, setStatus] = useState<"animating" | "reverted">("animating");
 
   useEffect(() => {
     if (!ref.current) return;
 
     // Reset to original text before splitting (handles React StrictMode double-execution)
     ref.current.textContent = AUTO_REVERT_TEXT;
+    setStatus("animating");
 
     splitText(ref.current, {
-      onSplit: ({ words }) =>
-        animate(
+      onSplit: ({ words }) => {
+        const animation = animate(
           words,
           { opacity: [0, 1], y: [20, 0] },
           { delay: stagger(0.05) },
-        ),
+        );
+        animation.finished.then(() => setStatus("reverted"));
+        return animation;
+      },
       revertOnComplete: true,
     });
   }, []);
 
   return (
-    <h2 ref={ref} className="text-3xl font-bold my-0!">
-      {AUTO_REVERT_TEXT}
-    </h2>
+    <>
+      <StatusIndicator status={status} />
+      <h2 ref={ref} className="text-3xl font-bold my-0!">
+        {AUTO_REVERT_TEXT}
+      </h2>
+    </>
   );
 }
 
