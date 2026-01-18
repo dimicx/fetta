@@ -1,11 +1,11 @@
 ---
-title: Vanilla Examples
+title: Vanilla
 description: Common animation patterns with Fetta and vanilla JavaScript.
 ---
 
 import { Tab, Tabs } from 'fumadocs-ui/components/tabs';
-import { BasicFadeInVanilla, CharacterRevealVanilla, LineByLineVanilla, MaskedLineRevealVanilla, AutoRevertVanilla, ResponsiveSplitVanilla, ScrollTriggeredVanilla, ScrollDrivenVanilla, WithGSAPVanilla, CSSOnlyVanilla } from "../../app/components/examples";
-import { ExampleWrapper, ResizableExampleWrapper } from "../../app/components/example-wrapper";
+import { BasicFadeInVanilla, CharacterRevealVanilla, LineByLineVanilla, MaskedLineRevealVanilla, AutoRevertVanilla, ResponsiveSplitVanilla, ScrollTriggeredVanilla, ScrollDrivenVanilla, WithGSAPVanilla, CSSOnlyVanilla } from "../../../app/components/examples";
+import { ExampleWrapper, ResizableExampleWrapper } from "../../../app/components/example-wrapper";
 
 # Vanilla Examples
 
@@ -152,8 +152,8 @@ import { animate, stagger } from 'motion';
 const element = document.querySelector('h1');
 
 splitText(element, {
-  onSplit: ({ words }) =>
-    animate(words, { opacity: [0, 1], y: [20, 0] }, { delay: stagger(0.05) }),
+  onSplit: ({ chars }) =>
+    animate(chars, { opacity: [0, 1], y: [10, 0] }, { delay: stagger(0.02), duration: 0.3 }),
   revertOnComplete: true
 });
 ```

@@ -189,11 +189,11 @@ export function AutoRevert() {
     <>
       <StatusIndicator status={status} />
       <SplitText
-        onSplit={({ words }) => {
+        onSplit={({ chars }) => {
           const animation = animate(
-            words,
-            { opacity: [0, 1], y: [20, 0] },
-            { delay: stagger(0.05) },
+            chars,
+            { opacity: [0, 1], y: [10, 0] },
+            { delay: stagger(0.02), duration: 0.3 },
           );
           animation.finished.then(() => setStatus("reverted"));
           return animation;
@@ -354,11 +354,11 @@ export function AutoRevertVanilla() {
     setStatus("animating");
 
     splitText(ref.current, {
-      onSplit: ({ words }) => {
+      onSplit: ({ chars }) => {
         const animation = animate(
-          words,
-          { opacity: [0, 1], y: [20, 0] },
-          { delay: stagger(0.05) },
+          chars,
+          { opacity: [0, 1], y: [10, 0] },
+          { delay: stagger(0.02), duration: 0.3 },
         );
         animation.finished.then(() => setStatus("reverted"));
         return animation;

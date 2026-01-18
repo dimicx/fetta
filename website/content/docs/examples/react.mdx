@@ -1,11 +1,11 @@
 ---
-title: React Examples
+title: React
 description: Common animation patterns with Fetta and React.
 ---
 
 import { Tab, Tabs } from 'fumadocs-ui/components/tabs';
-import { BasicFadeIn, CharacterReveal, LineByLine, MaskedLineReveal, ResponsiveSplit, ScrollTriggered, ScrollDriven, AutoRevert } from "../../app/components/examples";
-import { ExampleWrapper, ResizableExampleWrapper } from "../../app/components/example-wrapper";
+import { BasicFadeIn, CharacterReveal, LineByLine, MaskedLineReveal, ResponsiveSplit, ScrollTriggered, ScrollDriven, AutoRevert } from "../../../app/components/examples";
+import { ExampleWrapper, ResizableExampleWrapper } from "../../../app/components/example-wrapper";
 
 # React Examples
 
@@ -176,8 +176,8 @@ Set `revertOnComplete` to automatically restore the original HTML when the anima
   <Tab value="Code" className="[&_figure]:h-[240px]! [&_figure]:lg:h-[300px]! [&_figure_[role=region]]:max-h-[240px]! [&_figure_[role=region]]:lg:max-h-[300px]!">
 ```tsx
 <SplitText
-  onSplit={({ words }) =>
-    animate(words, { opacity: [0, 1], y: [20, 0] }, { delay: stagger(0.05) })
+  onSplit={({ chars }) =>
+    animate(chars, { opacity: [0, 1], y: [10, 0] }, { delay: stagger(0.02), duration: 0.3 })
   }
   revertOnComplete
 >
