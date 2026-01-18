@@ -7,6 +7,7 @@ Split text into characters, words, and lines while preserving the original typog
 ## Features
 
 - **Kerning Compensation** — Measures character positions before splitting, then applies margin adjustments to maintain original spacing
+- **Nested Element Support** — Preserves inline HTML elements (`<a>`, `<em>`, `<strong>`, etc.) with all attributes intact
 - **Natural Line Wrapping** — Detects lines based on Y-position clustering, works with any container width
 - **Dash Handling** — Allows text to wrap naturally after em-dashes, en-dashes, and hyphens
 - **Auto Re-split** — Automatically re-splits on container resize with debouncing
@@ -217,6 +218,20 @@ import gsap from 'gsap';
   }}
 >
   <h1>Works with GSAP</h1>
+</SplitText>
+```
+
+### Nested HTML Elements
+
+Fetta preserves inline elements like links, emphasis, and other formatting. Attributes (href, class, id, data-*, etc.) are maintained.
+
+```tsx
+<SplitText
+  onSplit={({ chars }) => {
+    animate(chars, { opacity: [0, 1] }, { delay: stagger(0.02) });
+  }}
+>
+  <p>Click <a href="/signup">here</a> to <em>get started</em></p>
 </SplitText>
 ```
 

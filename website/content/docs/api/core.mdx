@@ -99,6 +99,18 @@ splitText(element, {
 });
 ```
 
+### Nested HTML Elements
+
+Fetta preserves inline elements like `<a>`, `<em>`, `<strong>` when splitting. All attributes (href, class, data-*, etc.) are maintained.
+
+```ts title="main.ts"
+// HTML: <p>Click <a href="/signup" class="link">here</a> to get started</p>
+const { chars } = splitText(element);
+
+// The <a> tag wraps the split characters, preserving href and class
+animate(chars, { opacity: [0, 1] }, { delay: stagger(0.02) });
+```
+
 ### With CSS Variables
 
 Enable `propIndex` to add `--char-index`, `--word-index`, and `--line-index` CSS variables to each element.

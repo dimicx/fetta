@@ -124,6 +124,20 @@ Use `mask` in options to wrap elements in a clipping container. Content slides i
 </SplitText>
 ```
 
+## Nested HTML Elements
+
+Fetta preserves inline elements like `<a>`, `<em>`, `<strong>` when splitting. All attributes (href, class, data-*, etc.) are maintained.
+
+```tsx title="App.tsx"
+<SplitText
+  onSplit={({ chars }) => {
+    animate(chars, { opacity: [0, 1] }, { delay: stagger(0.02) });
+  }}
+>
+  <p>Click <a href="/signup">here</a> to <em>get started</em></p>
+</SplitText>
+```
+
 ## With Ref (Scroll-Driven)
 
 Use a ref to link scroll-driven animations with Motion's `scroll()` function.

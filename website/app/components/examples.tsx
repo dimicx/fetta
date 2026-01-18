@@ -177,7 +177,7 @@ export function ScrollDriven() {
           </SplitText>
         </div>
       </div>
-      <div className="h-full" />
+      <div className="h-1/3" />
     </div>
   );
 }
@@ -486,11 +486,15 @@ export function ResponsiveSplitVanilla() {
   );
 }
 
+const GSAP_TEXT = "Animated with GSAP";
+
 export function WithGSAPVanilla() {
   const ref = useRef<HTMLHeadingElement>(null);
 
   useEffect(() => {
     if (!ref.current) return;
+    // Reset to original text before splitting (handles React StrictMode double-execution)
+    ref.current.textContent = GSAP_TEXT;
     const { words } = splitText(ref.current);
     gsap.from(words, {
       opacity: 0,
@@ -503,7 +507,7 @@ export function WithGSAPVanilla() {
 
   return (
     <p ref={ref} className="text-3xl font-medium my-0!">
-      Animated with GSAP
+      {GSAP_TEXT}
     </p>
   );
 }
@@ -666,7 +670,7 @@ export function ScrollDrivenVanilla() {
           </p>
         </div>
       </div>
-      <div className="h-full" />
+      <div className="h-1/3" />
     </div>
   );
 }
