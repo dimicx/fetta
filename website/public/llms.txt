@@ -71,7 +71,7 @@ import { SplitText } from "fetta/react";
 
 ## Key Features
 
-- **Kerning Compensation**: Measures character positions before splitting, applies margin adjustments after to preserve original typography
+- **Kerning Compensation**: Measures character positions before splitting, applies margin adjustments after to preserve original typography (not available in Safari due to Range API limitations)
 - **Nested Elements**: Preserves inline HTML elements (`<a>`, `<em>`, `<strong>`, etc.) with all attributes (href, class, data-*, etc.)
 - **Line Detection**: Groups words into lines based on Y-position (5px tolerance)
 - **Dash Handling**: Text wraps naturally after em-dashes (—) and en-dashes (–)
