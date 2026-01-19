@@ -1071,6 +1071,13 @@ export function splitText(
     element.style.fontVariantLigatures = "none";
   }
 
+  // Safari workaround: disable font kerning when using revertOnComplete with chars
+  // Since we can't compensate for kerning in Safari, disabling it ensures
+  // the text doesn't shift when reverting to original HTML
+  if (isSafari && splitChars && revertOnComplete) {
+    element.style.fontKerning = "none";
+  }
+
   // Check once if we need to track nested inline elements (performance optimization)
   const trackAncestors = hasInlineDescendants(element);
 
@@ -1127,6 +1134,11 @@ export function splitText(
     // Keep ligatures disabled if we split chars (prevents visual shift on revert)
     if (splitChars) {
       element.style.fontVariantLigatures = "none";
+    }
+
+    // Keep font kerning disabled in Safari (prevents visual shift on revert)
+    if (isSafari && splitChars && revertOnComplete) {
+      element.style.fontKerning = "none";
     }
 
     // Auto-dispose when reverted

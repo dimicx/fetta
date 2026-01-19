@@ -215,6 +215,7 @@ export const SplitText = forwardRef<HTMLDivElement, SplitTextProps>(
       const result = splitText(childElement, {
         ...optionsRef.current,
         autoSplit,
+        revertOnComplete: revertOnCompleteRef.current,
         onResize: (resizeResult) => {
           // Update stored result with new elements but same revert
           const newSplitTextElements: SplitTextElements = {
@@ -279,6 +280,10 @@ export const SplitText = forwardRef<HTMLDivElement, SplitTextProps>(
         const threshold = inViewOptions.amount ?? 0;
         const rootMargin = inViewOptions.margin ?? "0px";
 
+        // Use array with both 0 and user's threshold to detect entering at threshold
+        // AND fully exiting (asymmetric: enter at threshold, leave at 0)
+        const thresholds = threshold > 0 ? [0, threshold] : 0;
+
         observerRef.current = new IntersectionObserver(
           (entries) => {
             const entry = entries[0];
@@ -287,17 +292,17 @@ export const SplitText = forwardRef<HTMLDivElement, SplitTextProps>(
             const isOnce =
               typeof inViewRef.current === "object" && inViewRef.current.once;
 
-            if (entry.isIntersecting) {
+            // Enter: when element is intersecting AND ratio is at/above threshold
+            if (entry.isIntersecting && entry.intersectionRatio >= threshold) {
               if (isOnce && hasTriggeredOnceRef.current) return;
               hasTriggeredOnceRef.current = true;
               setIsInView(true);
-            } else {
-              if (!isOnce) {
-                setIsInView(false);
-              }
+            } else if (!entry.isIntersecting && !isOnce) {
+              // Leave: only when element has fully exited viewport
+              setIsInView(false);
             }
           },
-          { threshold, rootMargin }
+          { threshold: thresholds, rootMargin }
         );
 
         observerRef.current.observe(containerRef.current);

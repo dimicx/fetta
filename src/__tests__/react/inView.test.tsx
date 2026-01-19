@@ -39,7 +39,8 @@ describe("SplitText inView", () => {
     await waitFor(() => {
       const observer = getLastIntersectionObserver();
       expect(observer).not.toBeNull();
-      expect(observer?.options.threshold).toBe(0.5);
+      // Asymmetric thresholds: [0, amount] for enter at amount, leave at 0
+      expect(observer?.options.threshold).toEqual([0, 0.5]);
       expect(observer?.options.rootMargin).toBe("100px");
     });
   });
