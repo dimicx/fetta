@@ -7,14 +7,18 @@ Split text into characters, words, and lines while preserving the original typog
 ## Features
 
 - **Kerning Compensation** — Measures character positions before splitting, then applies margin adjustments to maintain original spacing
-- **Nested Element Support** — Preserves inline HTML elements (`<a>`, `<em>`, `<strong>`, etc.) with all attributes intact
-- **Natural Line Wrapping** — Detects lines based on Y-position clustering, works with any container width
+- **Nested Elements** — Preserves inline HTML elements (`<a>`, `<em>`, `<strong>`, etc.) with all attributes intact
+- **Line Detection** — Detects lines based on Y-position clustering, works with any container width
 - **Dash Handling** — Allows text to wrap naturally after em-dashes, en-dashes, and hyphens
 - **Auto Re-split** — Automatically re-splits on container resize with debouncing
-- **Viewport Detection** — Built-in IntersectionObserver support for scroll-triggered animations
+- **Auto-Revert** — Restore original HTML after animations
 - **Masking** — Wrap elements in clip containers for reveal animations
-- **Animation Agnostic** — Works with Motion, GSAP, or any animation library
-- **React Component** — First-class React support with hooks and cleanup
+- **Emoji Support** — Properly handles compound emojis and complex Unicode characters
+- **Accessible** — Adds `aria-label` with original text for screen readers
+- **TypeScript** — Full type definitions included
+- **React Component** — Declarative wrapper for React projects
+- **Built-in InView** — Viewport detection for scroll-triggered animations in React
+- **Library Agnostic** — Works with Motion, GSAP, or any animation library
 
 ## Installation
 
