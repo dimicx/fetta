@@ -1,0 +1,874 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fetta E2E Tests</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      padding: 20px;
+    }
+
+    .test-container {
+      margin-bottom: 40px;
+    }
+
+    .test-container h2 {
+      margin-bottom: 10px;
+      font-size: 14px;
+      color: #666;
+    }
+
+    #kerning-test {
+      font-size: 48px;
+      font-family: Georgia, serif;
+    }
+
+    #lines-test {
+      font-size: 24px;
+      width: 300px;
+      line-height: 1.5;
+    }
+
+    #resize-container {
+      width: 400px;
+      border: 1px solid #ccc;
+      padding: 10px;
+      resize: horizontal;
+      overflow: auto;
+    }
+
+    #resize-test {
+      font-size: 18px;
+    }
+
+    .split-char {
+      display: inline-block;
+    }
+
+    .split-word {
+      display: inline-block;
+    }
+
+    .split-line {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <div class="test-container">
+    <h2>Kerning Test</h2>
+    <p id="kerning-test">WAVE Typography</p>
+  </div>
+
+  <div class="test-container">
+    <h2>Lines Test</h2>
+    <p id="lines-test">The quick brown fox jumps over the lazy dog and continues running</p>
+  </div>
+
+  <div class="test-container">
+    <h2>Resize Test</h2>
+    <div id="resize-container">
+      <p id="resize-test">This text should re-split when container resizes</p>
+    </div>
+  </div>
+
+  <div class="test-container">
+    <h2>Nested Elements Test</h2>
+    <p id="nested-test">Click <a href="/link">here</a> for more <strong>info</strong></p>
+  </div>
+
+  <script type="module">
+    // Inline the splitText function for E2E tests
+    // This avoids module resolution issues with serve
+
+    // Characters that act as break points (word can wrap after these)
+    const BREAK_CHARS = new Set([
+      "—", // em-dash
+      "–", // en-dash
+      "-", // hyphen
+      "/", // slash
+      "‒", // figure dash (U+2012)
+      "―", // horizontal bar (U+2015)
+    ]);
+
+    // Inline elements that should be preserved when splitting text
+    const INLINE_ELEMENTS = new Set([
+      'a', 'abbr', 'acronym', 'b', 'bdi', 'bdo', 'big', 'cite', 'code',
+      'data', 'del', 'dfn', 'em', 'i', 'ins', 'kbd', 'mark', 'q', 's',
+      'samp', 'small', 'span', 'strong', 'sub', 'sup', 'time', 'u', 'var',
+    ]);
+
+    function hasInlineDescendants(element) {
+      const walker = document.createTreeWalker(element, NodeFilter.SHOW_ELEMENT);
+      let node;
+      while ((node = walker.nextNode())) {
+        if (INLINE_ELEMENTS.has(node.tagName.toLowerCase())) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    function ancestorChainsEqual(a, b) {
+      if (a.length !== b.length) return false;
+      for (let i = 0; i < a.length; i++) {
+        if (a[i].instanceId !== b[i].instanceId) return false;
+      }
+      return true;
+    }
+
+    function groupCharsByAncestors(chars) {
+      if (chars.length === 0) return [];
+      const groups = [];
+      let currentGroup = [chars[0]];
+      let currentAncestors = chars[0].ancestors;
+      for (let i = 1; i < chars.length; i++) {
+        const char = chars[i];
+        if (ancestorChainsEqual(char.ancestors, currentAncestors)) {
+          currentGroup.push(char);
+        } else {
+          groups.push({ ancestors: currentAncestors, chars: currentGroup });
+          currentGroup = [char];
+          currentAncestors = char.ancestors;
+        }
+      }
+      groups.push({ ancestors: currentAncestors, chars: currentGroup });
+      return groups;
+    }
+
+    function cloneAncestorAsWrapper(info) {
+      const el = document.createElement(info.tagName);
+      info.attributes.forEach((value, key) => {
+        el.setAttribute(key, value);
+      });
+      return el;
+    }
+
+    function wrapInAncestors(content, ancestors) {
+      if (ancestors.length === 0) return content;
+      let wrapped = content;
+      for (let i = 0; i < ancestors.length; i++) {
+        const wrapper = cloneAncestorAsWrapper(ancestors[i]);
+        wrapper.appendChild(wrapped);
+        wrapped = wrapper;
+      }
+      return wrapped;
+    }
+
+    let segmenterCache = null;
+    function segmentGraphemes(text) {
+      if (!segmenterCache) {
+        segmenterCache = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+      }
+      return [...segmenterCache.segment(text)].map((s) => s.segment);
+    }
+
+    function buildAncestorChain(textNode, rootElement, ancestorCache) {
+      const ancestors = [];
+      let current = textNode.parentNode;
+      while (current && current !== rootElement && current instanceof Element) {
+        const tagName = current.tagName.toLowerCase();
+        if (INLINE_ELEMENTS.has(tagName)) {
+          let info = ancestorCache.get(current);
+          if (!info) {
+            const attributes = new Map();
+            for (const attr of current.attributes) {
+              attributes.set(attr.name, attr.value);
+            }
+            info = {
+              tagName,
+              attributes,
+              instanceId: Symbol(),
+            };
+            ancestorCache.set(current, info);
+          }
+          ancestors.push(info);
+        }
+        current = current.parentNode;
+      }
+      return ancestors;
+    }
+
+    function measureOriginalText(element, splitChars, trackAncestors) {
+      const range = document.createRange();
+      const words = [];
+      const ancestorCache = trackAncestors ? new WeakMap() : null;
+      const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+      let node;
+      let currentWord = [];
+      let wordStartLeft = null;
+      let noSpaceBeforeNext = false;
+      const emptyAncestors = [];
+
+      const pushWord = () => {
+        if (currentWord.length > 0) {
+          words.push({
+            chars: currentWord,
+            startLeft: wordStartLeft ?? 0,
+            noSpaceBefore: noSpaceBeforeNext,
+          });
+          currentWord = [];
+          wordStartLeft = null;
+          noSpaceBeforeNext = false;
+        }
+      };
+
+      while ((node = walker.nextNode())) {
+        const text = node.textContent || "";
+        const ancestors = trackAncestors
+          ? buildAncestorChain(node, element, ancestorCache)
+          : emptyAncestors;
+        const graphemes = segmentGraphemes(text);
+        let charOffset = 0;
+
+        for (const grapheme of graphemes) {
+          if (grapheme === " " || grapheme === "\n" || grapheme === "\t") {
+            pushWord();
+            charOffset += grapheme.length;
+            continue;
+          }
+
+          if (splitChars) {
+            range.setStart(node, charOffset);
+            range.setEnd(node, charOffset + grapheme.length);
+            const rect = range.getBoundingClientRect();
+            if (wordStartLeft === null) {
+              wordStartLeft = rect.left;
+            }
+            currentWord.push({ char: grapheme, left: rect.left, ancestors });
+          } else {
+            currentWord.push({ char: grapheme, left: 0, ancestors });
+          }
+
+          if (BREAK_CHARS.has(grapheme)) {
+            pushWord();
+            noSpaceBeforeNext = true;
+          }
+
+          charOffset += grapheme.length;
+        }
+      }
+      pushWord();
+      return words;
+    }
+
+    function createSpan(className, index, display = "inline-block", options) {
+      const span = document.createElement("span");
+      if (className) {
+        span.className = className;
+      }
+      if (index !== undefined) {
+        span.dataset.index = index.toString();
+        if (options?.propIndex && options?.propName) {
+          span.style.setProperty(`--${options.propName}-index`, index.toString());
+        }
+      }
+      span.style.display = display;
+      span.style.position = "relative";
+      span.style.textDecoration = "inherit";
+      if (options?.willChange) {
+        span.style.willChange = "transform, opacity";
+      }
+      return span;
+    }
+
+    function createMaskWrapper(display = "inline-block") {
+      const wrapper = document.createElement("span");
+      wrapper.style.display = display;
+      wrapper.style.position = "relative";
+      wrapper.style.overflow = "clip";
+      return wrapper;
+    }
+
+    function groupIntoLines(elements, element) {
+      const fontSize = parseFloat(getComputedStyle(element).fontSize);
+      const tolerance = Math.max(5, fontSize * 0.3);
+      const lineGroups = [];
+      let currentLine = [];
+      let currentY = null;
+
+      elements.forEach((el) => {
+        const rect = el instanceof HTMLElement
+          ? el.getBoundingClientRect()
+          : el.parentElement.getBoundingClientRect();
+        const y = Math.round(rect.top);
+
+        if (currentY === null) {
+          currentY = y;
+          currentLine.push(el);
+        } else if (Math.abs(y - currentY) < tolerance) {
+          currentLine.push(el);
+        } else {
+          lineGroups.push(currentLine);
+          currentLine = [el];
+          currentY = y;
+        }
+      });
+
+      if (currentLine.length > 0) {
+        lineGroups.push(currentLine);
+      }
+
+      return lineGroups;
+    }
+
+    function performSplit(element, measuredWords, charClass, wordClass, lineClass, splitChars, splitWords, splitLines, options) {
+      element.textContent = "";
+      const allChars = [];
+      const allWords = [];
+      const needWordWrappers = splitChars || splitWords;
+
+      if (needWordWrappers) {
+        const noSpaceBeforeSet = new Set();
+        const wordLevelAncestors = new Map();
+        let globalCharIndex = 0;
+
+        measuredWords.forEach((measuredWord, wordIndex) => {
+          const wordSpan = createSpan(wordClass, wordIndex, "inline-block", {
+            propIndex: options?.propIndex,
+            willChange: options?.willChange,
+            propName: "word",
+          });
+
+          if (measuredWord.noSpaceBefore) {
+            noSpaceBeforeSet.add(wordSpan);
+          }
+
+          if (splitChars) {
+            const hasAnyAncestors = measuredWord.chars.some(c => c.ancestors.length > 0);
+
+            if (!hasAnyAncestors) {
+              measuredWord.chars.forEach((measuredChar, charIndexInWord) => {
+                const charSpan = createSpan(charClass, globalCharIndex, "inline-block", {
+                  propIndex: options?.propIndex,
+                  willChange: options?.willChange,
+                  propName: "char",
+                });
+                charSpan.textContent = measuredChar.char;
+                globalCharIndex++;
+
+                if (charIndexInWord > 0) {
+                  const prevCharLeft = measuredWord.chars[charIndexInWord - 1].left;
+                  const gap = measuredChar.left - prevCharLeft;
+                  charSpan.dataset.expectedGap = gap.toString();
+                }
+
+                if (options?.mask === "chars") {
+                  const charWrapper = createMaskWrapper("inline-block");
+                  charWrapper.appendChild(charSpan);
+                  wordSpan.appendChild(charWrapper);
+                } else {
+                  wordSpan.appendChild(charSpan);
+                }
+                allChars.push(charSpan);
+              });
+            } else {
+              const charGroups = groupCharsByAncestors(measuredWord.chars);
+              const hasWordLevelAncestors = charGroups.length === 1 && charGroups[0].ancestors.length > 0;
+
+              if (hasWordLevelAncestors) {
+                wordLevelAncestors.set(wordSpan, charGroups[0].ancestors);
+              }
+
+              charGroups.forEach((group) => {
+                group.chars.forEach((measuredChar) => {
+                  const charIndexInWord = measuredWord.chars.indexOf(measuredChar);
+                  const charSpan = createSpan(charClass, globalCharIndex, "inline-block", {
+                    propIndex: options?.propIndex,
+                    willChange: options?.willChange,
+                    propName: "char",
+                  });
+                  charSpan.textContent = measuredChar.char;
+                  globalCharIndex++;
+
+                  if (charIndexInWord > 0) {
+                    const prevCharLeft = measuredWord.chars[charIndexInWord - 1].left;
+                    const gap = measuredChar.left - prevCharLeft;
+                    charSpan.dataset.expectedGap = gap.toString();
+                  }
+
+                  if (options?.mask === "chars") {
+                    const charWrapper = createMaskWrapper("inline-block");
+                    charWrapper.appendChild(charSpan);
+                    wordSpan.appendChild(charWrapper);
+                  } else {
+                    wordSpan.appendChild(charSpan);
+                  }
+                  allChars.push(charSpan);
+                });
+
+                if (!hasWordLevelAncestors && group.ancestors.length > 0) {
+                  const charsToWrap = Array.from(wordSpan.childNodes);
+                  const lastNChars = charsToWrap.slice(-group.chars.length);
+                  lastNChars.forEach((node) => wordSpan.removeChild(node));
+                  const fragment = document.createDocumentFragment();
+                  lastNChars.forEach((node) => fragment.appendChild(node));
+                  const wrapped = wrapInAncestors(fragment, group.ancestors);
+                  wordSpan.appendChild(wrapped);
+                }
+              });
+            }
+          } else {
+            const hasAnyAncestors = measuredWord.chars.some(c => c.ancestors.length > 0);
+            if (!hasAnyAncestors) {
+              wordSpan.textContent = measuredWord.chars.map((c) => c.char).join("");
+            } else {
+              const charGroups = groupCharsByAncestors(measuredWord.chars);
+              const hasWordLevelAncestors = charGroups.length === 1 && charGroups[0].ancestors.length > 0;
+              if (hasWordLevelAncestors) {
+                wordLevelAncestors.set(wordSpan, charGroups[0].ancestors);
+                wordSpan.textContent = measuredWord.chars.map((c) => c.char).join("");
+              } else {
+                charGroups.forEach((group) => {
+                  const text = group.chars.map((c) => c.char).join("");
+                  const textNode = document.createTextNode(text);
+                  if (group.ancestors.length > 0) {
+                    const wrapped = wrapInAncestors(textNode, group.ancestors);
+                    wordSpan.appendChild(wrapped);
+                  } else {
+                    wordSpan.appendChild(textNode);
+                  }
+                });
+              }
+            }
+          }
+
+          allWords.push(wordSpan);
+        });
+
+        let i = 0;
+        while (i < allWords.length) {
+          const wordSpan = allWords[i];
+          const ancestors = wordLevelAncestors.get(wordSpan);
+
+          if (ancestors && ancestors.length > 0) {
+            const wordGroup = [wordSpan];
+            let j = i + 1;
+            while (j < allWords.length) {
+              const nextWordSpan = allWords[j];
+              const nextAncestors = wordLevelAncestors.get(nextWordSpan);
+              if (nextAncestors && ancestorChainsEqual(ancestors, nextAncestors)) {
+                wordGroup.push(nextWordSpan);
+                j++;
+              } else {
+                break;
+              }
+            }
+
+            const fragment = document.createDocumentFragment();
+            wordGroup.forEach((ws, idx) => {
+              if (options?.mask === "words") {
+                const wordWrapper = createMaskWrapper("inline-block");
+                wordWrapper.appendChild(ws);
+                fragment.appendChild(wordWrapper);
+              } else {
+                fragment.appendChild(ws);
+              }
+              if (idx < wordGroup.length - 1 && !noSpaceBeforeSet.has(wordGroup[idx + 1])) {
+                fragment.appendChild(document.createTextNode(" "));
+              }
+            });
+
+            const wrapped = wrapInAncestors(fragment, ancestors);
+            element.appendChild(wrapped);
+
+            if (j < allWords.length && !noSpaceBeforeSet.has(allWords[j])) {
+              element.appendChild(document.createTextNode(" "));
+            }
+
+            i = j;
+          } else {
+            if (options?.mask === "words") {
+              const wordWrapper = createMaskWrapper("inline-block");
+              wordWrapper.appendChild(wordSpan);
+              element.appendChild(wordWrapper);
+            } else {
+              element.appendChild(wordSpan);
+            }
+            if (i < allWords.length - 1 && !noSpaceBeforeSet.has(allWords[i + 1])) {
+              element.appendChild(document.createTextNode(" "));
+            }
+            i++;
+          }
+        }
+
+        if (splitChars && allChars.length > 1) {
+          const positions = allChars.map((c) => c.getBoundingClientRect().left);
+
+          for (let i = 1; i < allChars.length; i++) {
+            const charSpan = allChars[i];
+            const expectedGap = charSpan.dataset.expectedGap;
+
+            if (expectedGap !== undefined) {
+              const originalGap = parseFloat(expectedGap);
+              const currentGap = positions[i] - positions[i - 1];
+              const delta = originalGap - currentGap;
+
+              if (Math.abs(delta) < 20) {
+                const roundedDelta = Math.round(delta * 100) / 100;
+                const targetElement = options?.mask === "chars" && charSpan.parentElement
+                  ? charSpan.parentElement
+                  : charSpan;
+                targetElement.style.marginLeft = `${roundedDelta}px`;
+              }
+
+              delete charSpan.dataset.expectedGap;
+            }
+          }
+        }
+
+        if (splitLines) {
+          const lineGroups = groupIntoLines(allWords, element);
+          element.textContent = "";
+
+          const allLines = [];
+          lineGroups.forEach((words, lineIndex) => {
+            const lineSpan = createSpan(lineClass, lineIndex, "block", {
+              propIndex: options?.propIndex,
+              willChange: options?.willChange,
+              propName: "line",
+            });
+
+            allLines.push(lineSpan);
+
+            let wi = 0;
+            while (wi < words.length) {
+              const wordSpan = words[wi];
+              const ancestors = wordLevelAncestors.get(wordSpan);
+
+              if (ancestors && ancestors.length > 0) {
+                const wordGroup = [wordSpan];
+                let wj = wi + 1;
+                while (wj < words.length) {
+                  const nextWordSpan = words[wj];
+                  const nextAncestors = wordLevelAncestors.get(nextWordSpan);
+                  if (nextAncestors && ancestorChainsEqual(ancestors, nextAncestors)) {
+                    wordGroup.push(nextWordSpan);
+                    wj++;
+                  } else {
+                    break;
+                  }
+                }
+
+                const fragment = document.createDocumentFragment();
+                wordGroup.forEach((ws, idx) => {
+                  if (options?.mask === "words") {
+                    const wordWrapper = createMaskWrapper("inline-block");
+                    wordWrapper.appendChild(ws);
+                    fragment.appendChild(wordWrapper);
+                  } else {
+                    fragment.appendChild(ws);
+                  }
+                  if (idx < wordGroup.length - 1 && !noSpaceBeforeSet.has(wordGroup[idx + 1])) {
+                    fragment.appendChild(document.createTextNode(" "));
+                  }
+                });
+
+                const wrapped = wrapInAncestors(fragment, ancestors);
+                lineSpan.appendChild(wrapped);
+
+                if (wj < words.length && !noSpaceBeforeSet.has(words[wj])) {
+                  lineSpan.appendChild(document.createTextNode(" "));
+                }
+
+                wi = wj;
+              } else {
+                if (options?.mask === "words") {
+                  const wordWrapper = createMaskWrapper("inline-block");
+                  wordWrapper.appendChild(wordSpan);
+                  lineSpan.appendChild(wordWrapper);
+                } else {
+                  lineSpan.appendChild(wordSpan);
+                }
+                if (wi < words.length - 1 && !noSpaceBeforeSet.has(words[wi + 1])) {
+                  lineSpan.appendChild(document.createTextNode(" "));
+                }
+                wi++;
+              }
+            }
+
+            if (options?.mask === "lines") {
+              const lineWrapper = createMaskWrapper("block");
+              lineWrapper.appendChild(lineSpan);
+              element.appendChild(lineWrapper);
+            } else {
+              element.appendChild(lineSpan);
+            }
+          });
+
+          return {
+            chars: allChars,
+            words: splitWords ? allWords : [],
+            lines: allLines,
+          };
+        }
+
+        return {
+          chars: allChars,
+          words: splitWords ? allWords : [],
+          lines: [],
+        };
+      } else {
+        if (splitLines) {
+          const wordWrappers = [];
+
+          measuredWords.forEach((measuredWord, idx) => {
+            const textNode = document.createTextNode(
+              measuredWord.chars.map((c) => c.char).join("")
+            );
+            const wrapper = document.createElement("span");
+            wrapper.style.display = "inline";
+            wrapper.appendChild(textNode);
+            element.appendChild(wrapper);
+            wordWrappers.push({ wrapper, wordIndex: idx });
+
+            if (idx < measuredWords.length - 1 && !measuredWords[idx + 1].noSpaceBefore) {
+              element.appendChild(document.createTextNode(" "));
+            }
+          });
+
+          const lineGroups = groupIntoLines(wordWrappers.map(w => w.wrapper), element);
+          element.textContent = "";
+
+          const allLines = [];
+          lineGroups.forEach((wrappers, lineIndex) => {
+            const lineSpan = createSpan(lineClass, lineIndex, "block", {
+              propIndex: options?.propIndex,
+              willChange: options?.willChange,
+              propName: "line",
+            });
+
+            allLines.push(lineSpan);
+
+            wrappers.forEach((wrapper, wrapperIdx) => {
+              while (wrapper.firstChild) {
+                lineSpan.appendChild(wrapper.firstChild);
+              }
+              if (wrapperIdx < wrappers.length - 1) {
+                const nextWrapper = wrappers[wrapperIdx + 1];
+                const nextWordInfo = wordWrappers.find(w => w.wrapper === nextWrapper);
+                if (nextWordInfo && !measuredWords[nextWordInfo.wordIndex].noSpaceBefore) {
+                  lineSpan.appendChild(document.createTextNode(" "));
+                }
+              }
+            });
+
+            if (options?.mask === "lines") {
+              const lineWrapper = createMaskWrapper("block");
+              lineWrapper.appendChild(lineSpan);
+              element.appendChild(lineWrapper);
+            } else {
+              element.appendChild(lineSpan);
+            }
+          });
+
+          return { chars: [], words: [], lines: allLines };
+        } else {
+          const fullText = measuredWords
+            .map((w) => w.chars.map((c) => c.char).join(""))
+            .join(" ");
+          element.textContent = fullText;
+          return { chars: [], words: [], lines: [] };
+        }
+      }
+    }
+
+    function splitText(element, options = {}) {
+      const {
+        type = "chars,words,lines",
+        charClass = "split-char",
+        wordClass = "split-word",
+        lineClass = "split-line",
+        mask,
+        autoSplit = false,
+        onResize,
+        onSplit,
+        revertOnComplete = false,
+        propIndex = false,
+        willChange = false,
+      } = options;
+
+      if (!(element instanceof HTMLElement)) {
+        throw new Error("splitText: element must be an HTMLElement");
+      }
+
+      const text = element.textContent?.trim();
+      if (!text) {
+        return {
+          chars: [],
+          words: [],
+          lines: [],
+          revert: () => {},
+        };
+      }
+
+      const originalHTML = element.innerHTML;
+
+      let splitChars = type.includes('chars');
+      let splitWords = type.includes('words');
+      let splitLines = type.includes('lines');
+
+      if (!splitChars && !splitWords && !splitLines) {
+        splitChars = splitWords = splitLines = true;
+      }
+
+      let isActive = true;
+      let resizeObserver = null;
+      let debounceTimer = null;
+      let lastWidth = null;
+
+      let currentChars = [];
+      let currentWords = [];
+      let currentLines = [];
+
+      element.setAttribute("aria-label", text);
+
+      if (splitChars) {
+        element.style.fontVariantLigatures = "none";
+      }
+
+      const trackAncestors = hasInlineDescendants(element);
+      const measuredWords = measureOriginalText(element, splitChars, trackAncestors);
+
+      const { chars, words, lines } = performSplit(
+        element,
+        measuredWords,
+        charClass,
+        wordClass,
+        lineClass,
+        splitChars,
+        splitWords,
+        splitLines,
+        { propIndex, willChange, mask }
+      );
+
+      currentChars = chars;
+      currentWords = words;
+      currentLines = lines;
+
+      const dispose = () => {
+        if (!isActive) return;
+        if (resizeObserver) {
+          resizeObserver.disconnect();
+          resizeObserver = null;
+        }
+        if (debounceTimer) {
+          clearTimeout(debounceTimer);
+          debounceTimer = null;
+        }
+        isActive = false;
+      };
+
+      const revert = () => {
+        if (!isActive) return;
+        element.innerHTML = originalHTML;
+        element.removeAttribute("aria-label");
+        if (splitChars) {
+          element.style.fontVariantLigatures = "none";
+        }
+        dispose();
+      };
+
+      if (autoSplit) {
+        const target = element.parentElement;
+        if (target) {
+          let skipFirst = true;
+
+          const getLineFingerprint = (lines) => {
+            return lines.map((line) => line.textContent || "").join("\n");
+          };
+
+          const handleResize = () => {
+            if (!isActive) return;
+            if (!element.isConnected) {
+              dispose();
+              return;
+            }
+
+            const currentWidth = target.offsetWidth;
+            if (currentWidth === lastWidth) return;
+            lastWidth = currentWidth;
+
+            const previousFingerprint = getLineFingerprint(currentLines);
+            element.innerHTML = originalHTML;
+
+            requestAnimationFrame(() => {
+              if (!isActive) return;
+              const newMeasuredWords = measureOriginalText(element, splitChars, trackAncestors);
+              const result = performSplit(
+                element,
+                newMeasuredWords,
+                charClass,
+                wordClass,
+                lineClass,
+                splitChars,
+                splitWords,
+                splitLines,
+                { propIndex, willChange, mask }
+              );
+
+              currentChars = result.chars;
+              currentWords = result.words;
+              currentLines = result.lines;
+
+              const newFingerprint = getLineFingerprint(result.lines);
+              if (onResize && newFingerprint !== previousFingerprint) {
+                onResize({
+                  chars: result.chars,
+                  words: result.words,
+                  lines: result.lines,
+                });
+              }
+            });
+          };
+
+          resizeObserver = new ResizeObserver(() => {
+            if (skipFirst) {
+              skipFirst = false;
+              return;
+            }
+            if (debounceTimer) {
+              clearTimeout(debounceTimer);
+            }
+            debounceTimer = setTimeout(handleResize, 200);
+          });
+
+          resizeObserver.observe(target);
+          lastWidth = target.offsetWidth;
+        }
+      }
+
+      if (onSplit) {
+        onSplit({
+          chars: currentChars,
+          words: currentWords,
+          lines: currentLines,
+        });
+      }
+
+      return {
+        chars: currentChars,
+        words: currentWords,
+        lines: currentLines,
+        revert,
+      };
+    }
+
+    // Expose splitText globally for Playwright access
+    window.splitText = splitText;
+
+    // Wait for fonts to load
+    document.fonts.ready.then(() => {
+      window.fontsReady = true;
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,85 @@
+{
+  "name": "fetta",
+  "version": "1.0.0",
+  "description": "Text splitting library with kerning compensation for animations",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./core": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./react": {
+      "types": "./dist/react.d.ts",
+      "import": "./dist/react.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "pnpm run build",
+    "test": "vitest",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest run --coverage",
+    "test:e2e": "playwright test",
+    "test:all": "vitest run --coverage && playwright test"
+  },
+  "peerDependencies": {
+    "react": ">=18.0.0"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0",
+    "@testing-library/dom": "^10.4.0",
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.1.0",
+    "@types/react": "^19",
+    "@vitest/coverage-v8": "^2.1.8",
+    "@vitest/ui": "^2.1.8",
+    "jsdom": "^25.0.1",
+    "react": "^19.2.3",
+    "react-dom": "^19.0.0",
+    "serve": "^14.2.4",
+    "tsup": "^8.0.0",
+    "typescript": "^5",
+    "vitest": "^2.1.8"
+  },
+  "keywords": [
+    "text",
+    "split",
+    "animation",
+    "motion",
+    "kerning",
+    "typography",
+    "gsap"
+  ],
+  "license": "MIT",
+  "author": "dimi",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dimicx/fetta.git"
+  },
+  "bugs": {
+    "url": "https://github.com/dimicx/fetta/issues"
+  },
+  "homepage": "https://fetta.dimi.me",
+  "publishConfig": {
+    "access": "public"
+  }
+}
