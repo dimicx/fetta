@@ -25,6 +25,15 @@ export async function generateStaticParams() {
   return source.generateParams();
 }
 
+// Custom page titles for sharing (clearer than frontmatter titles)
+const pageTitles: Record<string, string> = {
+  installation: "Installation",
+  "examples/vanilla": "Vanilla examples",
+  "examples/react": "React examples",
+  "api/core": "splitText() API reference",
+  "api/react": "SplitText (React) API reference",
+};
+
 export async function generateMetadata(props: {
   params: Promise<{ slug?: string[] }>;
 }) {
@@ -34,9 +43,11 @@ export async function generateMetadata(props: {
 
   // Use "Fetta" as title for the index page
   const isIndex = !params.slug || params.slug.length === 0;
+  const slugKey = params.slug?.join("/") || "";
+  const pageTitle = pageTitles[slugKey];
 
   return {
-    title: isIndex ? "Fetta" : page.data.title,
+    title: isIndex ? "Fetta" : `Fetta | ${pageTitle || page.data.title}`,
     description: page.data.description,
   };
 }
