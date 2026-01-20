@@ -29,12 +29,12 @@ import { splitText } from 'fetta';
 import { animate, stagger } from 'motion';
 
 const element = document.querySelector('p');
-const { words } = splitText(element, { type: 'words' });
+const { words } = splitText(element);
 
 animate(
   words,
-  { opacity: [0, 1], y: [20, 0] },
-  { delay: stagger(0.05), duration: 0.5 }
+  { opacity: [0, 1], filter: ["blur(8px)", "blur(0px)"], y: [20, 0] },
+  { delay: stagger(0.04), duration: 0.6, ease: [0.25, 1, 0.5, 1] }
 );
 ```
   </Tab>
@@ -62,8 +62,8 @@ const { chars } = splitText(element, { type: 'chars' });
 
 animate(
   chars,
-  { opacity: [0, 1], scale: [0.5, 1] },
-  { delay: stagger(0.02), duration: 0.3 }
+  { opacity: [0, 1], filter: ["blur(10px)", "blur(0px)"], y: [16, 0] },
+  { delay: stagger(0.03), duration: 0.65, ease: [0.25, 1, 0.5, 1] }
 );
 ```
   </Tab>
@@ -87,12 +87,12 @@ import { splitText } from 'fetta';
 import { animate, stagger } from 'motion';
 
 const element = document.querySelector('p');
-const { lines } = splitText(element, { type: 'lines' });
+const { lines } = splitText(element);
 
 animate(
   lines,
-  { opacity: [0, 1], x: [-20, 0] },
-  { delay: stagger(0.1), duration: 0.6 }
+  { opacity: [0, 1], filter: ["blur(8px)", "blur(0px)"], y: [20, 0] },
+  { delay: stagger(0.1), duration: 0.6, ease: [0.25, 1, 0.5, 1] }
 );
 ```
   </Tab>
@@ -122,8 +122,8 @@ const { chars } = splitText(element, { type: 'chars' });
 
 animate(
   chars,
-  { opacity: [0, 1], y: [10, 0] },
-  { delay: stagger(0.02), duration: 0.3 }
+  { opacity: [0, 1], filter: ["blur(6px)", "blur(0px)"], y: [8, 0] },
+  { delay: stagger(0.025), duration: 0.55, ease: [0.25, 1, 0.5, 1] }
 );
 ```
   </Tab>
@@ -154,8 +154,8 @@ splitText(element, {
   onSplit: ({ lines }) => {
     animate(
       lines,
-      { y: ['100%', '0%'] },
-      { delay: stagger(0.1), duration: 0.5 }
+      { y: ['105%', '0%'] },
+      { delay: stagger(0.1), duration: 0.7, ease: [0.16, 1, 0.3, 1] }
     );
   }
 });
@@ -185,7 +185,11 @@ const element = document.querySelector('p');
 splitText(element, {
   type: 'chars',
   onSplit: ({ chars }) =>
-    animate(chars, { opacity: [0, 1], y: [10, 0] }, { delay: stagger(0.02), duration: 0.3 }),
+    animate(
+      chars,
+      { opacity: [0, 1], filter: ["blur(8px)", "blur(0px)"], y: [12, 0] },
+      { delay: stagger(0.025), duration: 0.55, ease: [0.25, 1, 0.5, 1] }
+    ),
   revertOnComplete: true
 });
 ```
@@ -213,17 +217,22 @@ import { animate, stagger } from 'motion';
 
 const element = document.querySelector('p');
 
+const animateLines = (lines) => {
+  animate(
+    lines,
+    { y: ["100%", "0%"], opacity: [0.3, 1] },
+    { delay: stagger(0.1), duration: 0.65, ease: [0.16, 1, 0.3, 1] }
+  );
+};
+
 const result = splitText(element, {
-  type: 'lines',
   autoSplit: true,
-  onResize: ({ lines }) => {
-    animate(
-      lines,
-      { opacity: [0, 1], y: [12, 0] },
-      { delay: stagger(0.08), duration: 0.4 }
-    );
-  }
+  mask: 'lines',
+  onResize: ({ lines }) => animateLines(lines)
 });
+
+// Initial animation
+animateLines(result.lines);
 
 // Cleanup when done (optional - auto-cleans when element removed from DOM)
 result.revert();
@@ -254,17 +263,23 @@ const { words } = splitText(element, { type: 'words' });
 // Hide words initially
 words.forEach(w => {
   w.style.opacity = '0';
-  w.style.transform = 'translateY(30px)';
+  w.style.filter = 'blur(8px)';
+  w.style.transform = 'translateY(20px)';
 });
 
 // Trigger animation when element enters viewport
 inView(element, () => {
-  animate(words, { opacity: [0, 1], y: [30, 0] }, { delay: stagger(0.03) });
+  animate(
+    words,
+    { opacity: [0, 1], filter: ["blur(8px)", "blur(0px)"], y: [20, 0] },
+    { delay: stagger(0.04), duration: 0.6, ease: [0.25, 1, 0.5, 1] }
+  );
   // Reset styles when leaving view
   return () => {
     words.forEach(w => {
       w.style.opacity = '0';
-      w.style.transform = 'translateY(30px)';
+      w.style.filter = 'blur(8px)';
+      w.style.transform = 'translateY(20px)';
     });
   };
 }, { amount: 1 });
@@ -289,19 +304,20 @@ Link animations to scroll progress using Motion's `scroll()` function. The anima
 import { splitText } from 'fetta';
 import { animate, scroll } from 'motion';
 
+const container = document.querySelector('.scroll-container');
 const target = document.querySelector('.text-container');
 const element = target.querySelector('p');
-const { words } = splitText(element, { type: 'words' });
+const { chars } = splitText(element, { type: 'chars' });
 
 const animation = animate(
-  words.map((word, i) => [
-    word,
-    { opacity: [0, 1], y: [20, 0] },
-    { duration: 0.5, at: i * 0.1, ease: 'linear' }
+  chars.map((char, i) => [
+    char,
+    { opacity: [0, 1], filter: ["blur(4px)", "blur(0px)"], y: [8, 0] },
+    { duration: 0.3, at: i * 0.03, ease: [0.25, 1, 0.5, 1] }
   ])
 );
 
-scroll(animation, { target, offset: ['start 85%', 'start 20%'] });
+scroll(animation, { container, target, offset: ['start 85%', 'start 20%'] });
 ```
   </Tab>
 </Tabs>
@@ -328,10 +344,11 @@ const { words } = splitText(element, { type: 'words' });
 
 gsap.from(words, {
   opacity: 0,
-  y: 30,
-  stagger: 0.05,
-  duration: 0.5,
-  ease: "power2.out"
+  y: 24,
+  filter: "blur(12px)",
+  stagger: 0.04,
+  duration: 0.7,
+  ease: "expo.out"
 });
 ```
   </Tab>

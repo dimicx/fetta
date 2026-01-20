@@ -6,6 +6,10 @@ import { SplitText } from "fetta/react";
 import { animate, stagger, scroll, inView } from "motion";
 import gsap from "gsap";
 
+// Easing presets
+const easeOutQuart = [0.25, 1, 0.5, 1] as const;
+const easeOutExpo = [0.16, 1, 0.3, 1] as const;
+
 function StatusIndicator({ status }: { status: "animating" | "reverted" }) {
   return (
     <div className="absolute top-3 left-3 flex items-center gap-1.5 text-xs text-fd-muted-foreground">
@@ -27,8 +31,8 @@ export function BasicFadeIn() {
         onSplit={({ words }) => {
           animate(
             words,
-            { opacity: [0, 1], y: [20, 0] },
-            { delay: stagger(0.05), duration: 0.5 },
+            { opacity: [0, 1], filter: ["blur(8px)", "blur(0px)"], y: [20, 0] },
+            { delay: stagger(0.04), duration: 0.6, ease: easeOutQuart },
           );
         }}
       >
@@ -48,8 +52,12 @@ export function CharacterReveal() {
         onSplit={({ chars }) => {
           animate(
             chars,
-            { opacity: [0, 1], scale: [0.5, 1] },
-            { delay: stagger(0.02), duration: 0.3 },
+            {
+              opacity: [0, 1],
+              filter: ["blur(10px)", "blur(0px)"],
+              y: [16, 0],
+            },
+            { delay: stagger(0.03), duration: 0.65, ease: easeOutQuart },
           );
         }}
       >
@@ -68,14 +76,17 @@ export function LineByLine() {
         onSplit={({ lines }) => {
           animate(
             lines,
-            { opacity: [0, 1], x: [-20, 0] },
-            { delay: stagger(0.1), duration: 0.6 },
+            {
+              opacity: [0, 1],
+              filter: ["blur(8px)", "blur(0px)"],
+              y: [20, 0],
+            },
+            { delay: stagger(0.1), duration: 0.6, ease: easeOutQuart },
           );
         }}
       >
         <p className="text-base md:text-lg max-w-md text-center">
-          This paragraph animates line by line. Each line slides in from the
-          left.
+          This paragraph animates line by line. Each line fades into view.
         </p>
       </SplitText>
     </div>
@@ -109,21 +120,27 @@ export function ScrollTriggered() {
           onSplit={({ words }) => {
             words.forEach((w) => {
               w.style.opacity = "0";
-              w.style.transform = "translateY(30px)";
+              w.style.filter = "blur(8px)";
+              w.style.transform = "translateY(20px)";
             });
           }}
           inView={{ amount: 1 }}
           onInView={({ words }) =>
             animate(
               words,
-              { opacity: [0, 1], y: [30, 0] },
-              { delay: stagger(0.03) },
+              {
+                opacity: [0, 1],
+                filter: ["blur(8px)", "blur(0px)"],
+                y: [20, 0],
+              },
+              { delay: stagger(0.04), duration: 0.6, ease: easeOutQuart },
             )
           }
           onLeaveView={({ words }) => {
             words.forEach((w) => {
               w.style.opacity = "0";
-              w.style.transform = "translateY(30px)";
+              w.style.filter = "blur(8px)";
+              w.style.transform = "translateY(20px)";
             });
           }}
         >
@@ -164,17 +181,21 @@ export function ScrollDriven() {
       <div className="flex items-center justify-center min-h-full">
         <div ref={targetRef}>
           <SplitText
-            options={{ type: "words" }}
-            onSplit={({ words }) => {
+            options={{ type: "chars" }}
+            onSplit={({ chars }) => {
               const container = containerRef.current;
               const target = targetRef.current;
               if (!container || !target) return;
 
               const animation = animate(
-                words.map((word, i) => [
-                  word,
-                  { opacity: [0, 1], y: [20, 0] },
-                  { duration: 0.5, at: i * 0.1, ease: "linear" },
+                chars.map((char, i) => [
+                  char,
+                  {
+                    opacity: [0, 1],
+                    filter: ["blur(4px)", "blur(0px)"],
+                    y: [8, 0],
+                  },
+                  { duration: 0.3, at: i * 0.03, ease: easeOutQuart },
                 ]),
               );
 
@@ -186,7 +207,7 @@ export function ScrollDriven() {
             }}
           >
             <p className="text-2xl font-medium text-center max-w-xs">
-              Each word reveals as you scroll through this container
+              Each character reveals as you scroll through this container
             </p>
           </SplitText>
         </div>
@@ -207,8 +228,12 @@ export function AutoRevert() {
         onSplit={({ chars }) => {
           const animation = animate(
             chars,
-            { opacity: [0, 1], y: [10, 0] },
-            { delay: stagger(0.02), duration: 0.3 },
+            {
+              opacity: [0, 1],
+              filter: ["blur(8px)", "blur(0px)"],
+              y: [12, 0],
+            },
+            { delay: stagger(0.025), duration: 0.55, ease: easeOutQuart },
           );
           animation.finished.then(() => setStatus("reverted"));
           return animation;
@@ -230,8 +255,8 @@ export function MaskedLineReveal() {
         onSplit={({ lines }) => {
           animate(
             lines,
-            { y: ["100%", "0%"] },
-            { delay: stagger(0.1), duration: 0.5, ease: [0.25, 1, 0.5, 1] },
+            { y: ["105%", "0%"] },
+            { delay: stagger(0.1), duration: 0.7, ease: easeOutExpo },
           );
         }}
         options={{ type: "lines", mask: "lines" }}
@@ -252,8 +277,12 @@ export function EmojiSupport() {
         onSplit={({ chars }) => {
           animate(
             chars,
-            { opacity: [0, 1], scale: [0.5, 1] },
-            { delay: stagger(0.05), duration: 0.3 },
+            {
+              opacity: [0, 1],
+              scale: [0.8, 1],
+              y: [10, 0],
+            },
+            { delay: stagger(0.045), duration: 0.6, ease: easeOutQuart },
           );
         }}
       >
@@ -273,8 +302,12 @@ export function NestedElements() {
         onSplit={({ chars }) => {
           animate(
             chars,
-            { opacity: [0, 1], y: [10, 0] },
-            { delay: stagger(0.02), duration: 0.3 },
+            {
+              opacity: [0, 1],
+              filter: ["blur(6px)", "blur(0px)"],
+              y: [8, 0],
+            },
+            { delay: stagger(0.025), duration: 0.55, ease: easeOutQuart },
           );
         }}
       >
@@ -296,11 +329,12 @@ export function ResponsiveSplit() {
     <div className="w-full">
       <SplitText
         autoSplit
+        options={{ mask: "lines" }}
         onSplit={({ lines }) => {
           animate(
             lines,
-            { opacity: [0, 1], y: [16, 0] },
-            { delay: stagger(0.08), duration: 0.4 },
+            { y: ["100%", "0%"], opacity: [0.3, 1] },
+            { delay: stagger(0.1), duration: 0.65, ease: easeOutExpo },
           );
         }}
       >
@@ -327,8 +361,8 @@ export function BasicFadeInVanilla() {
     const { words } = splitText(ref.current);
     animate(
       words,
-      { opacity: [0, 1], y: [20, 0] },
-      { delay: stagger(0.05), duration: 0.5 },
+      { opacity: [0, 1], filter: ["blur(8px)", "blur(0px)"], y: [20, 0] },
+      { delay: stagger(0.04), duration: 0.6, ease: easeOutQuart },
     );
   }, []);
 
@@ -351,8 +385,12 @@ export function CharacterRevealVanilla() {
     const { chars } = splitText(ref.current, { type: "chars" });
     animate(
       chars,
-      { opacity: [0, 1], scale: [0.5, 1] },
-      { delay: stagger(0.02), duration: 0.3 },
+      {
+        opacity: [0, 1],
+        filter: ["blur(10px)", "blur(0px)"],
+        y: [16, 0],
+      },
+      { delay: stagger(0.03), duration: 0.65, ease: easeOutQuart },
     );
   }, []);
 
@@ -364,7 +402,7 @@ export function CharacterRevealVanilla() {
 }
 
 const LINE_BY_LINE_TEXT =
-  "This paragraph animates line by line. Each line slides in from the left.";
+  "This paragraph animates line by line. Each line fades into view.";
 
 export function LineByLineVanilla() {
   const ref = useRef<HTMLParagraphElement>(null);
@@ -376,8 +414,12 @@ export function LineByLineVanilla() {
     const { lines } = splitText(ref.current);
     animate(
       lines,
-      { opacity: [0, 1], x: [-20, 0] },
-      { delay: stagger(0.1), duration: 0.6 },
+      {
+        opacity: [0, 1],
+        filter: ["blur(8px)", "blur(0px)"],
+        y: [20, 0],
+      },
+      { delay: stagger(0.1), duration: 0.6, ease: easeOutQuart },
     );
   }, []);
 
@@ -400,8 +442,12 @@ export function NestedElementsVanilla() {
     const { chars } = splitText(ref.current, { type: "chars" });
     animate(
       chars,
-      { opacity: [0, 1], y: [10, 0] },
-      { delay: stagger(0.02), duration: 0.3 },
+      {
+        opacity: [0, 1],
+        filter: ["blur(6px)", "blur(0px)"],
+        y: [8, 0],
+      },
+      { delay: stagger(0.025), duration: 0.55, ease: easeOutQuart },
     );
   }, []);
 
@@ -432,8 +478,8 @@ export function MaskedLineRevealVanilla() {
       onSplit: ({ lines }) => {
         animate(
           lines,
-          { y: ["100%", "0%"] },
-          { delay: stagger(0.1), duration: 0.5, ease: [0.25, 1, 0.5, 1] },
+          { y: ["105%", "0%"] },
+          { delay: stagger(0.1), duration: 0.7, ease: easeOutExpo },
         );
       },
     });
@@ -460,12 +506,16 @@ export function AutoRevertVanilla() {
     queueMicrotask(() => setStatus("animating"));
 
     splitText(ref.current, {
-      type: "words",
-      onSplit: ({ words }) => {
+      type: "chars",
+      onSplit: ({ chars }) => {
         const animation = animate(
-          words,
-          { opacity: [0, 1], y: [10, 0] },
-          { delay: stagger(0.02), duration: 0.3 },
+          chars,
+          {
+            opacity: [0, 1],
+            filter: ["blur(8px)", "blur(0px)"],
+            y: [12, 0],
+          },
+          { delay: stagger(0.025), duration: 0.55, ease: easeOutQuart },
         );
         animation.finished.then(() => setStatus("reverted"));
         return animation;
@@ -497,23 +547,22 @@ export function ResponsiveSplitVanilla() {
     // Reset to original text before splitting (handles React StrictMode double-execution)
     ref.current.textContent = RESPONSIVE_TEXT;
 
+    const animateLines = (lines: HTMLElement[]) => {
+      animate(
+        lines,
+        { y: ["100%", "0%"], opacity: [0.3, 1] },
+        { delay: stagger(0.1), duration: 0.65, ease: easeOutExpo },
+      );
+    };
+
     resultRef.current = splitText(ref.current, {
       autoSplit: true,
-      onResize: ({ lines }) => {
-        animate(
-          lines,
-          { opacity: [0, 1], y: [16, 0] },
-          { delay: stagger(0.08), duration: 0.4 },
-        );
-      },
+      mask: "lines",
+      onResize: ({ lines }) => animateLines(lines),
     });
     // Initial animation
     if (resultRef.current.lines) {
-      animate(
-        resultRef.current.lines,
-        { opacity: [0, 1], y: [16, 0] },
-        { delay: stagger(0.08), duration: 0.4 },
-      );
+      animateLines(resultRef.current.lines);
     }
     return () => resultRef.current?.revert();
   }, []);
@@ -537,10 +586,11 @@ export function WithGSAPVanilla() {
     const { words } = splitText(ref.current, { type: "words" });
     gsap.from(words, {
       opacity: 0,
-      y: 30,
-      stagger: 0.05,
-      duration: 0.5,
-      ease: "power2.out",
+      y: 24,
+      filter: "blur(12px)",
+      stagger: 0.04,
+      duration: 0.7,
+      ease: "expo.out",
     });
   }, []);
 
@@ -568,7 +618,8 @@ export function ScrollTriggeredVanilla() {
     // Set initial hidden state
     words.forEach((w) => {
       w.style.opacity = "0";
-      w.style.transform = "translateY(30px)";
+      w.style.filter = "blur(8px)";
+      w.style.transform = "translateY(20px)";
     });
 
     const cleanup = inView(
@@ -576,14 +627,19 @@ export function ScrollTriggeredVanilla() {
       () => {
         animate(
           words,
-          { opacity: [0, 1], y: [30, 0] },
-          { delay: stagger(0.03) },
+          {
+            opacity: [0, 1],
+            filter: ["blur(8px)", "blur(0px)"],
+            y: [20, 0],
+          },
+          { delay: stagger(0.04), duration: 0.6, ease: easeOutQuart },
         );
         // Reset styles when leaving view
         return () => {
           words.forEach((w) => {
             w.style.opacity = "0";
-            w.style.transform = "translateY(30px)";
+            w.style.filter = "blur(8px)";
+            w.style.transform = "translateY(20px)";
           });
         };
       },
@@ -647,7 +703,7 @@ export function CSSOnlyVanilla() {
 }
 
 const SCROLL_DRIVEN_TEXT =
-  "Each word reveals as you scroll through this container";
+  "Each character reveals as you scroll through this container";
 
 export function ScrollDrivenVanilla() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -660,13 +716,17 @@ export function ScrollDrivenVanilla() {
     // Reset text for React StrictMode
     textRef.current.textContent = SCROLL_DRIVEN_TEXT;
 
-    const { words } = splitText(textRef.current, { type: "words" });
+    const { chars } = splitText(textRef.current, { type: "chars" });
 
     const animation = animate(
-      words.map((word, i) => [
-        word,
-        { opacity: [0, 1], y: [20, 0] },
-        { duration: 0.5, at: i * 0.1, ease: "linear" as const },
+      chars.map((char, i) => [
+        char,
+        {
+          opacity: [0, 1],
+          filter: ["blur(4px)", "blur(0px)"],
+          y: [8, 0],
+        },
+        { duration: 0.3, at: i * 0.03, ease: easeOutQuart },
       ]),
     );
 

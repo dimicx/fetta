@@ -29,8 +29,8 @@ The `onSplit` callback fires after the text is split, giving you access to the s
   onSplit={({ words }) => {
     animate(
       words,
-      { opacity: [0, 1], y: [20, 0] },
-      { delay: stagger(0.05), duration: 0.5 }
+      { opacity: [0, 1], filter: ["blur(8px)", "blur(0px)"], y: [20, 0] },
+      { delay: stagger(0.04), duration: 0.6, ease: [0.25, 1, 0.5, 1] }
     );
   }}
   options={{ type: "words" }}
@@ -59,8 +59,8 @@ Access `chars` instead of `words` to animate each character individually. Use sh
   onSplit={({ chars }) => {
     animate(
       chars,
-      { opacity: [0, 1], scale: [0.5, 1] },
-      { delay: stagger(0.02), duration: 0.3 }
+      { opacity: [0, 1], filter: ["blur(10px)", "blur(0px)"], y: [16, 0] },
+      { delay: stagger(0.03), duration: 0.65, ease: [0.25, 1, 0.5, 1] }
     );
   }}
   options={{ type: "chars" }}
@@ -89,8 +89,8 @@ Fetta correctly handles compound emojis like family groups, flags, and skin tone
   onSplit={({ chars }) => {
     animate(
       chars,
-      { opacity: [0, 1], scale: [0.5, 1] },
-      { delay: stagger(0.05), duration: 0.3 }
+      { opacity: [0, 1], scale: [0.8, 1], y: [10, 0] },
+      { delay: stagger(0.045), duration: 0.6, ease: [0.25, 1, 0.5, 1] }
     );
   }}
   options={{ type: "chars" }}
@@ -119,8 +119,8 @@ Fetta preserves inline HTML elements like `<a>`, `<em>`, and `<strong>` when spl
   onSplit={({ chars }) => {
     animate(
       chars,
-      { opacity: [0, 1], y: [10, 0] },
-      { delay: stagger(0.02), duration: 0.3 }
+      { opacity: [0, 1], filter: ["blur(6px)", "blur(0px)"], y: [8, 0] },
+      { delay: stagger(0.025), duration: 0.55, ease: [0.25, 1, 0.5, 1] }
     );
   }}
   options={{ type: "chars" }}
@@ -151,15 +151,14 @@ Lines are detected based on actual rendered positions, so this works with any te
   onSplit={({ lines }) => {
     animate(
       lines,
-      { opacity: [0, 1], x: [-20, 0] },
-      { delay: stagger(0.1), duration: 0.6 }
+      { opacity: [0, 1], filter: ["blur(8px)", "blur(0px)"], y: [20, 0] },
+      { delay: stagger(0.1), duration: 0.6, ease: [0.25, 1, 0.5, 1] }
     );
   }}
-  options={{ type: "lines" }}
 >
   <p>
     This paragraph animates line by line.
-    Each line slides in from the left.
+    Each line fades into view.
   </p>
 </SplitText>
 ```
@@ -184,8 +183,8 @@ Use the `mask` option to wrap elements in a clipping container with `overflow: c
   onSplit={({ lines }) => {
     animate(
       lines,
-      { y: ["100%", "0%"] },
-      { delay: stagger(0.1), duration: 0.5 }
+      { y: ["105%", "0%"] },
+      { delay: stagger(0.1), duration: 0.7, ease: [0.16, 1, 0.3, 1] }
     );
   }}
   options={{ type: "lines", mask: "lines" }}
@@ -217,11 +216,11 @@ If you want to re-trigger animations on resize, use the `onResize` callback.
   onSplit={({ lines }) => {
     animate(
       lines,
-      { opacity: [0, 1], y: [12, 0] },
-      { delay: stagger(0.08), duration: 0.4 }
+      { y: ["100%", "0%"], opacity: [0.3, 1] },
+      { delay: stagger(0.1), duration: 0.65, ease: [0.16, 1, 0.3, 1] }
     );
   }}
-  options={{ type: "lines" }}
+  options={{ mask: "lines" }}
 >
   <p>This text reflows naturally at any width, with lines recalculated on resize.</p>
 </SplitText>
@@ -245,7 +244,11 @@ Set `revertOnComplete` to automatically restore the original HTML when the anima
 ```tsx
 <SplitText
   onSplit={({ chars }) =>
-    animate(chars, { opacity: [0, 1], y: [10, 0] }, { delay: stagger(0.02), duration: 0.3 })
+    animate(
+      chars,
+      { opacity: [0, 1], filter: ["blur(8px)", "blur(0px)"], y: [12, 0] },
+      { delay: stagger(0.025), duration: 0.55, ease: [0.25, 1, 0.5, 1] }
+    )
   }
   options={{ type: "chars" }}
   revertOnComplete
@@ -274,18 +277,24 @@ Use `inView` to detect when the element enters the viewport, and `onInView` to t
   onSplit={({ words }) => {
     words.forEach(w => {
       w.style.opacity = '0';
-      w.style.transform = 'translateY(30px)';
+      w.style.filter = 'blur(8px)';
+      w.style.transform = 'translateY(20px)';
     });
   }}
   options={{ type: "words" }}
   inView={{ amount: 1 }}
   onInView={({ words }) =>
-    animate(words, { opacity: [0, 1], y: [30, 0] }, { delay: stagger(0.03) })
+    animate(
+      words,
+      { opacity: [0, 1], filter: ["blur(8px)", "blur(0px)"], y: [20, 0] },
+      { delay: stagger(0.04), duration: 0.6, ease: [0.25, 1, 0.5, 1] }
+    )
   }
   onLeaveView={({ words }) => {
     words.forEach(w => {
       w.style.opacity = '0';
-      w.style.transform = 'translateY(30px)';
+      w.style.filter = 'blur(8px)';
+      w.style.transform = 'translateY(20px)';
     });
   }}
 >
@@ -311,27 +320,29 @@ Link animations to scroll progress using Motion's `scroll()` function. The anima
 ```tsx
 import { scroll, animate } from 'motion';
 
+const containerRef = useRef<HTMLDivElement>(null);
 const targetRef = useRef<HTMLDivElement>(null);
 
 <div ref={targetRef}>
   <SplitText
-    onSplit={({ words }) => {
+    onSplit={({ chars }) => {
+      const container = containerRef.current;
       const target = targetRef.current;
-      if (!target) return;
+      if (!container || !target) return;
 
       const animation = animate(
-        words.map((word, i) => [
-          word,
-          { opacity: [0, 1], y: [20, 0] },
-          { duration: 0.5, at: i * 0.1, ease: 'linear' }
+        chars.map((char, i) => [
+          char,
+          { opacity: [0, 1], filter: ["blur(4px)", "blur(0px)"], y: [8, 0] },
+          { duration: 0.3, at: i * 0.03, ease: [0.25, 1, 0.5, 1] }
         ])
       );
 
-      scroll(animation, { target, offset: ['start 85%', 'start 20%'] });
+      scroll(animation, { container, target, offset: ['start 85%', 'start 20%'] });
     }}
-    options={{ type: 'words' }}
+    options={{ type: 'chars' }}
   >
-    <p>Each word reveals as you scroll</p>
+    <p>Each character reveals as you scroll</p>
   </SplitText>
 </div>
 ```

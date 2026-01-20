@@ -50,7 +50,7 @@ export interface SplitTextOptions {
   revertOnComplete?: boolean;
   /** Add CSS custom properties (--char-index, --word-index, --line-index) */
   propIndex?: boolean;
-  /** Add will-change: transform, opacity to split elements for better animation performance */
+  /** Add will-change: transform, opacity to split elements for better animation performance (default: true) */
   willChange?: boolean;
 }
 
@@ -1012,7 +1012,7 @@ export function splitText(
     onSplit,
     revertOnComplete = false,
     propIndex = false,
-    willChange = false,
+    willChange = true,
   }: SplitTextOptions = {}
 ): SplitTextResult {
   // Validation

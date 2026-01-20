@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, type ReactNode } from "react";
-import { motion } from "motion/react";
+import { motion, useInView } from "motion/react";
 
 function ReplayIcon() {
   return (
@@ -26,9 +26,11 @@ function ReplayIcon() {
 
 export function ExampleWrapper({ children }: { children: ReactNode }) {
   const [key, setKey] = useState(0);
+  const ref = useRef<HTMLDivElement>(null);
+  const isInView = useInView(ref, { amount: 0.6, once: true });
 
   return (
-    <div className="relative w-full h-[240px] lg:h-[300px]">
+    <div ref={ref} className="relative w-full h-[240px] lg:h-[300px]">
       <div className="empty:hidden absolute top-3 right-2 z-2">
         <button
           type="button"
@@ -40,7 +42,7 @@ export function ExampleWrapper({ children }: { children: ReactNode }) {
         </button>
       </div>
       <div key={key} className="w-full h-full flex items-center justify-center">
-        {children}
+        {isInView && children}
       </div>
     </div>
   );
@@ -76,6 +78,8 @@ export function ResizableExampleWrapper({ children }: { children: ReactNode }) {
   const [width, setWidth] = useState(50);
   const [isDragging, setIsDragging] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const isInView = useInView(wrapperRef, { amount: 0.6, once: true });
 
   // Set correct initial width after hydration on mobile
   useEffect(() => {
@@ -88,7 +92,7 @@ export function ResizableExampleWrapper({ children }: { children: ReactNode }) {
   const getMinWidth = () => (window.innerWidth < 768 ? 40 : 30);
 
   return (
-    <div className="relative w-full h-[240px] lg:h-[300px]">
+    <div ref={wrapperRef} className="relative w-full h-[240px] lg:h-[300px]">
       <div className="empty:hidden absolute top-3 right-2 z-2 backdrop-blur-lg rounded-lg text-fd-muted-foreground">
         <button
           type="button"
@@ -111,7 +115,7 @@ export function ResizableExampleWrapper({ children }: { children: ReactNode }) {
             key={key}
             className={`w-full h-full flex items-center justify-center px-4 ${isDragging ? "select-none" : ""}`}
           >
-            {children}
+            {isInView && children}
           </div>
           <motion.div
             drag="x"
