@@ -41,13 +41,14 @@ export async function generateMetadata(props: {
   const page = source.getPage(params.slug);
   if (!page) notFound();
 
-  // Use "Fetta" as title for the index page
+  // Index page uses the default title from layout, others use the template
   const isIndex = !params.slug || params.slug.length === 0;
   const slugKey = params.slug?.join("/") || "";
-  const pageTitle = pageTitles[slugKey];
+  const pageTitle = pageTitles[slugKey] || page.data.title;
 
   return {
-    title: isIndex ? "Fetta" : `Fetta | ${pageTitle || page.data.title}`,
+    // { absolute: "Fetta" } bypasses the template for the index page
+    title: isIndex ? { absolute: "Fetta" } : pageTitle,
     description: page.data.description,
   };
 }

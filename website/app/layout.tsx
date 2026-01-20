@@ -34,7 +34,10 @@ const serif = EB_Garamond({
 });
 
 export const metadata: Metadata = {
-  title: "fetta - Text Splitting Library",
+  title: {
+    default: "Fetta",
+    template: "Fetta | %s",
+  },
   description:
     "Text splitting library with kerning compensation for animations",
   openGraph: {
