@@ -128,14 +128,16 @@ function injectSrOnlyStyles(): void {
 
   const style = document.createElement('style');
   style.textContent = `
-.fetta-sr-only:not(:focus):not(:active) {
-  clip: rect(0 0 0 0);
-  clip-path: inset(50%);
-  height: 1px;
-  overflow: hidden;
+.fetta-sr-only {
   position: absolute;
-  white-space: nowrap;
   width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border-width: 0;
 }`;
   document.head.appendChild(style);
   srOnlyStylesInjected = true;
@@ -434,7 +436,7 @@ function createSpan(
   className?: string,
   index?: number,
   display: "inline-block" | "block" = "inline-block",
-  options?: { propIndex?: boolean; willChange?: boolean; propName?: string }
+  options?: { propIndex?: boolean; willChange?: boolean; propName?: string; ariaHidden?: boolean }
 ): HTMLSpanElement {
   const span = document.createElement("span");
 
@@ -459,6 +461,11 @@ function createSpan(
   // Add will-change hint for better animation performance
   if (options?.willChange) {
     span.style.willChange = "transform, opacity";
+  }
+
+  // Hide from screen readers (for simple text, aria-label on parent provides accessible name)
+  if (options?.ariaHidden) {
+    span.setAttribute("aria-hidden", "true");
   }
 
   return span;
@@ -531,7 +538,7 @@ function performSplit(
   splitChars: boolean,
   splitWords: boolean,
   splitLines: boolean,
-  options?: { propIndex?: boolean; willChange?: boolean; mask?: "lines" | "words" | "chars" }
+  options?: { propIndex?: boolean; willChange?: boolean; mask?: "lines" | "words" | "chars"; ariaHidden?: boolean }
 ): {
   chars: HTMLSpanElement[];
   words: HTMLSpanElement[];
@@ -565,6 +572,7 @@ function performSplit(
         propIndex: options?.propIndex,
         willChange: options?.willChange,
         propName: "word",
+        ariaHidden: options?.ariaHidden,
       });
 
       if (measuredWord.noSpaceBefore) {
@@ -582,6 +590,7 @@ function performSplit(
               propIndex: options?.propIndex,
               willChange: options?.willChange,
               propName: "char",
+              ariaHidden: options?.ariaHidden,
             });
             charSpan.textContent = measuredChar.char;
             globalCharIndex++;
@@ -807,6 +816,7 @@ function performSplit(
           propIndex: options?.propIndex,
           willChange: options?.willChange,
           propName: "line",
+          ariaHidden: options?.ariaHidden,
         });
 
         allLines.push(lineSpan);
@@ -1122,6 +1132,8 @@ export function splitText(
   const measuredWords = measureOriginalText(element, measureChars, trackAncestors);
 
   // Perform the split
+  // For simple text, add aria-hidden to each span (GSAP-style approach)
+  // For nested elements, we'll wrap in a container instead
   const { chars, words, lines } = performSplit(
     element,
     measuredWords,
@@ -1131,7 +1143,7 @@ export function splitText(
     splitChars,
     splitWords,
     splitLines,
-    { propIndex, willChange, mask }
+    { propIndex, willChange, mask, ariaHidden: !trackAncestors }
   );
 
   // Store initial result
@@ -1141,8 +1153,7 @@ export function splitText(
 
   // Accessibility: Set up screen reader access based on content complexity
   if (trackAncestors) {
-    // Complex content with nested elements: use aria-hidden + sr-only copy
-    // This preserves semantic structure (links, emphasis) for screen readers
+    // Complex content with nested elements: wrap in aria-hidden + add sr-only copy
     injectSrOnlyStyles();
 
     const visualWrapper = document.createElement('span');
@@ -1155,7 +1166,7 @@ export function splitText(
     element.appendChild(visualWrapper);
     element.appendChild(createScreenReaderCopy(originalHTML));
   } else {
-    // Simple text: use aria-label approach
+    // Simple text: aria-hidden on each span + aria-label on parent
     element.setAttribute("aria-label", text);
   }
 
@@ -1254,7 +1265,7 @@ export function splitText(
             splitChars,
             splitWords,
             splitLines,
-            { propIndex, willChange, mask }
+            { propIndex, willChange, mask, ariaHidden: !trackAncestors }
           );
 
           // Update current result
@@ -1262,7 +1273,7 @@ export function splitText(
           currentWords = result.words;
           currentLines = result.lines;
 
-          // Re-apply accessibility structure for nested elements
+          // Re-apply accessibility structure for nested elements only
           if (trackAncestors) {
             const visualWrapper = document.createElement('span');
             visualWrapper.setAttribute('aria-hidden', 'true');
