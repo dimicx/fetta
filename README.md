@@ -1,4 +1,4 @@
-# fetta
+# Fetta
 
 A text-splitting library with kerning compensation for smooth, natural text animations.
 
@@ -14,7 +14,7 @@ Split text into characters, words, and lines while preserving the original typog
 - **Auto-Revert** — Restore original HTML after animations
 - **Masking** — Wrap elements in clip containers for reveal animations
 - **Emoji Support** — Properly handles compound emojis and complex Unicode characters
-- **Accessible** — Adds `aria-label` with original text for screen readers
+- **Accessible** — Automatic screen reader support, even when splitting text with nested links or emphasis
 - **TypeScript** — Full type definitions included
 - **React Component** — Declarative wrapper for React projects
 - **Built-in InView** — Viewport detection for scroll-triggered animations in React
@@ -255,7 +255,7 @@ Each element also receives a `data-index` attribute with its position.
 
 - **Fonts must be loaded** before splitting. The React component waits for `document.fonts.ready` automatically.
 - **Ligatures are disabled** (`font-variant-ligatures: none`) because ligatures cannot span multiple elements.
-- **Accessibility**: Split elements receive an `aria-label` with the original text for screen readers.
+- **Accessibility**: Automatic screen reader support for both simple text and text with nested elements like links.
 
 ## Browser Support
 
