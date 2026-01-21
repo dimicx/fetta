@@ -334,7 +334,7 @@ describe("splitText", () => {
   });
 
   describe("accessibility", () => {
-    it("adds aria-label with original text content", () => {
+    it("adds aria-label with original text content for simple text", () => {
       const element = document.createElement("p");
       element.textContent = "Hello World";
       container.appendChild(element);
@@ -342,6 +342,100 @@ describe("splitText", () => {
       splitText(element);
 
       expect(element.getAttribute("aria-label")).toBe("Hello World");
+    });
+
+    it("uses aria-hidden + sr-only for nested elements", () => {
+      const element = document.createElement("p");
+      element.innerHTML = 'Click <a href="/link">here</a> for more';
+      container.appendChild(element);
+
+      splitText(element, { type: "words" });
+
+      // Visual content should be wrapped with aria-hidden
+      const visualWrapper = element.querySelector('[data-fetta-visual="true"]');
+      expect(visualWrapper).not.toBeNull();
+      expect(visualWrapper?.getAttribute("aria-hidden")).toBe("true");
+
+      // Screen reader copy should exist with sr-only class
+      const srCopy = element.querySelector('[data-fetta-sr-copy="true"]');
+      expect(srCopy).not.toBeNull();
+      expect(srCopy?.classList.contains("fetta-sr-only")).toBe(true);
+
+      // Should NOT have aria-label (using sr-only approach instead)
+      expect(element.getAttribute("aria-label")).toBeNull();
+    });
+
+    it("preserves semantic structure in sr-only copy", () => {
+      const element = document.createElement("p");
+      element.innerHTML = 'This has <strong>bold</strong> and <a href="/test">links</a>';
+      container.appendChild(element);
+
+      splitText(element, { type: "chars" });
+
+      const srCopy = element.querySelector('[data-fetta-sr-copy="true"]');
+      expect(srCopy).not.toBeNull();
+
+      // Check that the sr-only copy preserves the anchor with href
+      const srAnchor = srCopy?.querySelector("a");
+      expect(srAnchor).not.toBeNull();
+      expect(srAnchor?.getAttribute("href")).toBe("/test");
+
+      // Check that strong is preserved
+      const srStrong = srCopy?.querySelector("strong");
+      expect(srStrong).not.toBeNull();
+    });
+
+    it("removes aria-label on revert for simple text", () => {
+      const element = document.createElement("p");
+      element.textContent = "Hello";
+      container.appendChild(element);
+
+      const result = splitText(element);
+
+      expect(element.getAttribute("aria-label")).toBe("Hello");
+
+      result.revert();
+
+      expect(element.getAttribute("aria-label")).toBeNull();
+    });
+
+    it("removes visual wrapper and sr-copy on revert for nested elements", () => {
+      const element = document.createElement("p");
+      element.innerHTML = 'Click <a href="/link">here</a>';
+      container.appendChild(element);
+
+      const result = splitText(element, { type: "words" });
+
+      // Verify structures exist before revert
+      expect(element.querySelector('[data-fetta-visual="true"]')).not.toBeNull();
+      expect(element.querySelector('[data-fetta-sr-copy="true"]')).not.toBeNull();
+
+      result.revert();
+
+      // After revert, accessibility structures should be removed (replaced by original HTML)
+      expect(element.querySelector('[data-fetta-visual="true"]')).toBeNull();
+      expect(element.querySelector('[data-fetta-sr-copy="true"]')).toBeNull();
+
+      // Original HTML should be restored
+      const anchor = element.querySelector("a");
+      expect(anchor).not.toBeNull();
+      expect(anchor?.getAttribute("href")).toBe("/link");
+      expect(anchor?.textContent).toBe("here");
+    });
+
+    it("injects sr-only styles into document head", () => {
+      const element = document.createElement("p");
+      element.innerHTML = 'Text with <em>emphasis</em>';
+      container.appendChild(element);
+
+      splitText(element, { type: "words" });
+
+      // Check that styles were injected
+      const styleElements = document.querySelectorAll("style");
+      const fettaStyle = Array.from(styleElements).find(
+        (s) => s.textContent?.includes("fetta-sr-only")
+      );
+      expect(fettaStyle).not.toBeNull();
     });
   });
 

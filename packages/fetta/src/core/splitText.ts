@@ -116,6 +116,43 @@ const isSafari = typeof navigator !== 'undefined' &&
   /Safari/.test(navigator.userAgent) &&
   !/Chrome/.test(navigator.userAgent);
 
+// Track whether screen reader styles have been injected
+let srOnlyStylesInjected = false;
+
+/**
+ * Inject screen reader only CSS styles into the document.
+ * Only injects once per page load.
+ */
+function injectSrOnlyStyles(): void {
+  if (srOnlyStylesInjected || typeof document === 'undefined') return;
+
+  const style = document.createElement('style');
+  style.textContent = `
+.fetta-sr-only:not(:focus):not(:active) {
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  height: 1px;
+  overflow: hidden;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
+}`;
+  document.head.appendChild(style);
+  srOnlyStylesInjected = true;
+}
+
+/**
+ * Create a screen reader only copy of the original HTML.
+ * Preserves semantic structure (links, emphasis, etc.) for assistive technology.
+ */
+function createScreenReaderCopy(originalHTML: string): HTMLSpanElement {
+  const srCopy = document.createElement('span');
+  srCopy.className = 'fetta-sr-only';
+  srCopy.innerHTML = originalHTML;
+  srCopy.dataset.fettaSrCopy = 'true';
+  return srCopy;
+}
+
 /**
  * Check if element contains any inline element descendants.
  * Used for early detection to skip ancestor tracking when not needed.
@@ -1062,9 +1099,6 @@ export function splitText(
   let currentWords: HTMLSpanElement[] = [];
   let currentLines: HTMLSpanElement[] = [];
 
-  // Set aria-label for accessibility
-  element.setAttribute("aria-label", text);
-
   // If splitting chars, force disable ligatures for consistency
   // Ligatures can't span multiple char elements anyway
   if (splitChars) {
@@ -1105,6 +1139,26 @@ export function splitText(
   currentWords = words;
   currentLines = lines;
 
+  // Accessibility: Set up screen reader access based on content complexity
+  if (trackAncestors) {
+    // Complex content with nested elements: use aria-hidden + sr-only copy
+    // This preserves semantic structure (links, emphasis) for screen readers
+    injectSrOnlyStyles();
+
+    const visualWrapper = document.createElement('span');
+    visualWrapper.setAttribute('aria-hidden', 'true');
+    visualWrapper.dataset.fettaVisual = 'true';
+
+    while (element.firstChild) {
+      visualWrapper.appendChild(element.firstChild);
+    }
+    element.appendChild(visualWrapper);
+    element.appendChild(createScreenReaderCopy(originalHTML));
+  } else {
+    // Simple text: use aria-label approach
+    element.setAttribute("aria-label", text);
+  }
+
   // Cleanup function to disconnect observers and timers
   const dispose = () => {
     if (!isActive) return;
@@ -1129,7 +1183,12 @@ export function splitText(
     if (!isActive) return;
 
     element.innerHTML = originalHTML;
-    element.removeAttribute("aria-label");
+
+    // aria-hidden wrapper and sr-copy are removed by innerHTML reset
+    // Only remove aria-label for simple text case (it wasn't set for nested elements)
+    if (!trackAncestors) {
+      element.removeAttribute("aria-label");
+    }
 
     // Keep ligatures disabled if we split chars (prevents visual shift on revert)
     if (splitChars) {
@@ -1202,6 +1261,19 @@ export function splitText(
           currentChars = result.chars;
           currentWords = result.words;
           currentLines = result.lines;
+
+          // Re-apply accessibility structure for nested elements
+          if (trackAncestors) {
+            const visualWrapper = document.createElement('span');
+            visualWrapper.setAttribute('aria-hidden', 'true');
+            visualWrapper.dataset.fettaVisual = 'true';
+
+            while (element.firstChild) {
+              visualWrapper.appendChild(element.firstChild);
+            }
+            element.appendChild(visualWrapper);
+            element.appendChild(createScreenReaderCopy(originalHTML));
+          }
 
           // Only trigger callback if lines actually changed
           const newFingerprint = getLineFingerprint(result.lines);
