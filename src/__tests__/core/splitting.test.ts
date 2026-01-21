@@ -334,14 +334,27 @@ describe("splitText", () => {
   });
 
   describe("accessibility", () => {
-    it("adds aria-label with original text content for simple text", () => {
+    it("adds aria-label and aria-hidden on each span for simple text", () => {
       const element = document.createElement("p");
       element.textContent = "Hello World";
       container.appendChild(element);
 
-      splitText(element);
+      const result = splitText(element, { type: "words" });
 
       expect(element.getAttribute("aria-label")).toBe("Hello World");
+
+      // Each word span should have aria-hidden (no wrapper needed)
+      result.words.forEach((word) => {
+        expect(word.getAttribute("aria-hidden")).toBe("true");
+      });
+
+      // No visual wrapper for simple text
+      const visualWrapper = element.querySelector('[data-fetta-visual="true"]');
+      expect(visualWrapper).toBeNull();
+
+      // No sr-only copy for simple text (aria-label is sufficient)
+      const srCopy = element.querySelector('[data-fetta-sr-copy="true"]');
+      expect(srCopy).toBeNull();
     });
 
     it("uses aria-hidden + sr-only for nested elements", () => {
