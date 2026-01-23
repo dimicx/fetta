@@ -489,20 +489,6 @@ describe("splitText", () => {
     });
   });
 
-  describe("willChange option", () => {
-    it("adds will-change property when willChange is true", () => {
-      const element = document.createElement("p");
-      element.textContent = "Hi";
-      container.appendChild(element);
-
-      const result = splitText(element, { type: "chars", willChange: true });
-
-      result.chars.forEach((char) => {
-        expect(char.style.willChange).toBe("transform, opacity");
-      });
-    });
-  });
-
   describe("onSplit callback", () => {
     it("calls onSplit with split elements", () => {
       const element = document.createElement("p");

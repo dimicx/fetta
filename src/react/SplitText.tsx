@@ -26,7 +26,6 @@ interface SplitTextOptions {
   /** Apply overflow mask wrapper to elements for reveal animations */
   mask?: "lines" | "words" | "chars";
   propIndex?: boolean;
-  willChange?: boolean;
 }
 
 interface InViewOptions {

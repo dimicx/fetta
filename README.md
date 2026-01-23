@@ -85,7 +85,6 @@ const result = splitText(element, options);
 | `onSplit` | `function` | — | Callback after initial split |
 | `revertOnComplete` | `boolean` | `false` | Auto-revert when animation completes |
 | `propIndex` | `boolean` | `false` | Add CSS custom properties: `--char-index`, `--word-index`, `--line-index` |
-| `willChange` | `boolean` | `false` | Add `will-change: transform, opacity` for performance |
 
 #### Return Value
 
@@ -111,7 +110,7 @@ import { SplitText } from 'fetta/react';
 | `children` | `ReactElement` | — | Single element to split |
 | `onSplit` | `function` | — | Called after text is split |
 | `onResize` | `function` | — | Called on autoSplit re-split |
-| `options` | `object` | — | Split options (type, classes, mask, propIndex, willChange) |
+| `options` | `object` | — | Split options (type, classes, mask, propIndex) |
 | `autoSplit` | `boolean` | `false` | Re-split on container resize |
 | `revertOnComplete` | `boolean` | `false` | Revert after animation completes |
 | `inView` | `boolean \| InViewOptions` | `false` | Enable viewport detection |
