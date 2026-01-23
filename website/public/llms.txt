@@ -23,7 +23,6 @@ const { chars, words, lines, revert } = splitText(element, {
   mask: "lines",              // Wrap in overflow:clip container: "lines" | "words" | "chars"
   autoSplit: true,            // Re-split on container resize
   propIndex: true,            // Add --char-index, --word-index, --line-index CSS vars
-  willChange: true,           // Add will-change:transform hint
   onSplit: (result) => {},    // Callback after split, return animation for revertOnComplete
   onResize: (result) => {},   // Callback after re-split
   revertOnComplete: true,     // Restore original HTML when animation finishes

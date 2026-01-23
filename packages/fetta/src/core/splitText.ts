@@ -50,8 +50,6 @@ export interface SplitTextOptions {
   revertOnComplete?: boolean;
   /** Add CSS custom properties (--char-index, --word-index, --line-index) */
   propIndex?: boolean;
-  /** Add will-change: transform, opacity to split elements for better animation performance (default: true) */
-  willChange?: boolean;
 }
 
 /**
@@ -436,7 +434,7 @@ function createSpan(
   className?: string,
   index?: number,
   display: "inline-block" | "block" = "inline-block",
-  options?: { propIndex?: boolean; willChange?: boolean; propName?: string; ariaHidden?: boolean }
+  options?: { propIndex?: boolean; propName?: string; ariaHidden?: boolean }
 ): HTMLSpanElement {
   const span = document.createElement("span");
 
@@ -457,11 +455,6 @@ function createSpan(
   span.style.position = "relative";
   // Inherit text-decoration so underlines from parent <a> tags work with inline-block
   span.style.textDecoration = "inherit";
-
-  // Add will-change hint for better animation performance
-  if (options?.willChange) {
-    span.style.willChange = "transform, opacity";
-  }
 
   // Hide from screen readers (for simple text, aria-label on parent provides accessible name)
   if (options?.ariaHidden) {
@@ -538,7 +531,7 @@ function performSplit(
   splitChars: boolean,
   splitWords: boolean,
   splitLines: boolean,
-  options?: { propIndex?: boolean; willChange?: boolean; mask?: "lines" | "words" | "chars"; ariaHidden?: boolean }
+  options?: { propIndex?: boolean; mask?: "lines" | "words" | "chars"; ariaHidden?: boolean }
 ): {
   chars: HTMLSpanElement[];
   words: HTMLSpanElement[];
@@ -570,8 +563,7 @@ function performSplit(
     measuredWords.forEach((measuredWord, wordIndex) => {
       const wordSpan = createSpan(wordClass, wordIndex, "inline-block", {
         propIndex: options?.propIndex,
-        willChange: options?.willChange,
-        propName: "word",
+                propName: "word",
         ariaHidden: options?.ariaHidden,
       });
 
@@ -588,14 +580,13 @@ function performSplit(
           measuredWord.chars.forEach((measuredChar, charIndexInWord) => {
             const charSpan = createSpan(charClass, globalCharIndex, "inline-block", {
               propIndex: options?.propIndex,
-              willChange: options?.willChange,
-              propName: "char",
+                            propName: "char",
               ariaHidden: options?.ariaHidden,
             });
             charSpan.textContent = measuredChar.char;
             globalCharIndex++;
 
-            // Store expected gap for kerning compensation
+            // Store expected gap for kerning compensation (gaps between consecutive chars)
             if (charIndexInWord > 0) {
               const prevCharLeft = measuredWord.chars[charIndexInWord - 1].left;
               const gap = measuredChar.left - prevCharLeft;
@@ -631,13 +622,12 @@ function performSplit(
 
               const charSpan = createSpan(charClass, globalCharIndex, "inline-block", {
                 propIndex: options?.propIndex,
-                willChange: options?.willChange,
-                propName: "char",
+                                propName: "char",
               });
               charSpan.textContent = measuredChar.char;
               globalCharIndex++;
 
-              // Store expected gap for kerning compensation
+              // Store expected gap for kerning compensation (gaps between consecutive chars)
               if (charIndexInWord > 0) {
                 const prevCharLeft = measuredWord.chars[charIndexInWord - 1].left;
                 const gap = measuredChar.left - prevCharLeft;
@@ -779,8 +769,20 @@ function performSplit(
     // Safari's Range API only returns integers, breaking the compensation
     // Use allChars array directly since char spans may be nested in ancestor wrappers
     if (splitChars && allChars.length > 1 && !isSafari) {
-      const positions = allChars.map((c) => c.getBoundingClientRect().left);
+      // Use Range API to measure text positions (same as original measurement)
+      // This ensures we compare glyph positions, not span element positions
+      const range = document.createRange();
+      const positions = allChars.map((c) => {
+        const textNode = c.firstChild;
+        if (textNode && textNode.nodeType === Node.TEXT_NODE) {
+          range.setStart(textNode, 0);
+          range.setEnd(textNode, textNode.textContent?.length || 1);
+          return range.getBoundingClientRect().left;
+        }
+        return c.getBoundingClientRect().left;
+      });
 
+      // Use gap-based compensation (only adjusts spacing between consecutive chars)
       for (let i = 1; i < allChars.length; i++) {
         const charSpan = allChars[i];
         const expectedGap = charSpan.dataset.expectedGap;
@@ -790,14 +792,15 @@ function performSplit(
           const currentGap = positions[i] - positions[i - 1];
           const delta = originalGap - currentGap;
 
-          if (Math.abs(delta) < 20) {
-            const roundedDelta = Math.round(delta * 100) / 100;
+          // Only apply if delta is perceptible (>0.1px) but reasonable (<20px)
+          // Tiny sub-pixel adjustments accumulate and shift subsequent words
+          if (Math.abs(delta) > 0.1 && Math.abs(delta) < 20) {
             // Apply margin to the char span itself
             // (or its mask wrapper parent if present)
             const targetElement = options?.mask === "chars" && charSpan.parentElement
               ? charSpan.parentElement
               : charSpan;
-            targetElement.style.marginLeft = `${roundedDelta}px`;
+            targetElement.style.marginLeft = `${delta}px`;
           }
 
           delete charSpan.dataset.expectedGap;
@@ -814,8 +817,7 @@ function performSplit(
       lineGroups.forEach((words, lineIndex) => {
         const lineSpan = createSpan(lineClass, lineIndex, "block", {
           propIndex: options?.propIndex,
-          willChange: options?.willChange,
-          propName: "line",
+                    propName: "line",
           ariaHidden: options?.ariaHidden,
         });
 
@@ -950,8 +952,7 @@ function performSplit(
         lineGroups.forEach((wrappers, lineIndex) => {
           const lineSpan = createSpan(lineClass, lineIndex, "block", {
             propIndex: options?.propIndex,
-            willChange: options?.willChange,
-            propName: "line",
+                        propName: "line",
           });
 
           allLines.push(lineSpan);
@@ -1059,7 +1060,6 @@ export function splitText(
     onSplit,
     revertOnComplete = false,
     propIndex = false,
-    willChange = true,
   }: SplitTextOptions = {}
 ): SplitTextResult {
   // Validation
@@ -1143,7 +1143,7 @@ export function splitText(
     splitChars,
     splitWords,
     splitLines,
-    { propIndex, willChange, mask, ariaHidden: !trackAncestors }
+    { propIndex, mask, ariaHidden: !trackAncestors }
   );
 
   // Store initial result
@@ -1265,7 +1265,7 @@ export function splitText(
             splitChars,
             splitWords,
             splitLines,
-            { propIndex, willChange, mask, ariaHidden: !trackAncestors }
+            { propIndex, mask, ariaHidden: !trackAncestors }
           );
 
           // Update current result

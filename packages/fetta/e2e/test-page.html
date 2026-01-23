@@ -274,9 +274,6 @@
       span.style.display = display;
       span.style.position = "relative";
       span.style.textDecoration = "inherit";
-      if (options?.willChange) {
-        span.style.willChange = "transform, opacity";
-      }
       return span;
     }
 
@@ -334,7 +331,6 @@
         measuredWords.forEach((measuredWord, wordIndex) => {
           const wordSpan = createSpan(wordClass, wordIndex, "inline-block", {
             propIndex: options?.propIndex,
-            willChange: options?.willChange,
             propName: "word",
           });
 
@@ -349,8 +345,7 @@
               measuredWord.chars.forEach((measuredChar, charIndexInWord) => {
                 const charSpan = createSpan(charClass, globalCharIndex, "inline-block", {
                   propIndex: options?.propIndex,
-                  willChange: options?.willChange,
-                  propName: "char",
+                        propName: "char",
                 });
                 charSpan.textContent = measuredChar.char;
                 globalCharIndex++;
@@ -383,8 +378,7 @@
                   const charIndexInWord = measuredWord.chars.indexOf(measuredChar);
                   const charSpan = createSpan(charClass, globalCharIndex, "inline-block", {
                     propIndex: options?.propIndex,
-                    willChange: options?.willChange,
-                    propName: "char",
+                            propName: "char",
                   });
                   charSpan.textContent = measuredChar.char;
                   globalCharIndex++;
@@ -533,8 +527,7 @@
           lineGroups.forEach((words, lineIndex) => {
             const lineSpan = createSpan(lineClass, lineIndex, "block", {
               propIndex: options?.propIndex,
-              willChange: options?.willChange,
-              propName: "line",
+                propName: "line",
             });
 
             allLines.push(lineSpan);
@@ -642,8 +635,7 @@
           lineGroups.forEach((wrappers, lineIndex) => {
             const lineSpan = createSpan(lineClass, lineIndex, "block", {
               propIndex: options?.propIndex,
-              willChange: options?.willChange,
-              propName: "line",
+                propName: "line",
             });
 
             allLines.push(lineSpan);
@@ -693,7 +685,6 @@
         onSplit,
         revertOnComplete = false,
         propIndex = false,
-        willChange = false,
       } = options;
 
       if (!(element instanceof HTMLElement)) {
@@ -747,7 +738,7 @@
         splitChars,
         splitWords,
         splitLines,
-        { propIndex, willChange, mask }
+        { propIndex, mask }
       );
 
       currentChars = chars;
@@ -812,7 +803,7 @@
                 splitChars,
                 splitWords,
                 splitLines,
-                { propIndex, willChange, mask }
+                { propIndex, mask }
               );
 
               currentChars = result.chars;
