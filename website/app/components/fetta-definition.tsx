@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import { ItalianFlag } from "./icons/italian-flag";
 import { motion, stagger, useAnimate } from "motion/react";
 import { Volume } from "./icons/volume";
@@ -9,10 +9,15 @@ export function FettaDefinition() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [scope, animate] = useAnimate();
 
+  // Preload audio on mount
+  useEffect(() => {
+    const audio = new Audio("/pronunciation_it_fetta.mp3");
+    audio.preload = "auto";
+    audioRef.current = audio;
+  }, []);
+
   const playPronunciation = () => {
-    if (!audioRef.current) {
-      audioRef.current = new Audio("/pronunciation_it_fetta.mp3");
-    }
+    if (!audioRef.current) return;
     audioRef.current.currentTime = 0;
     audioRef.current.play();
 
@@ -42,9 +47,7 @@ export function FettaDefinition() {
             <span className="h-4">
               <ItalianFlag />
             </span>
-            <span>
-              <em>Noun</em> · <span>/&apos;fetːa/</span>
-            </span>
+            <span>Noun · /&apos;fetːa/</span>
             <motion.button
               onClick={playPronunciation}
               className="size-6 flex items-center justify-center cursor-pointer group text-fd-muted-foreground hover:text-fd-foreground active:scale-95 transition-all duration-150 ease-out focus-visible:outline-none will-change-transform focus-visible:ring-2 focus-visible:ring-fd-ring bg-fd-secondary hover:bg-fd-accent active:bg-fd-accent rounded-md"

@@ -4,6 +4,7 @@ description: Text splitting for animations — without the jank.
 ---
 
 import { FettaDefinition } from "../../app/components/fetta-definition";
+import { KerningComparison } from "../../app/components/kerning-comparison";
 
 # Introduction
 
@@ -13,11 +14,13 @@ Text splitting for animations — without the jank.
 
 ## Why Fetta?
 
-Text splitting sounds simple: wrap each character in a span. But fonts have kerning — subtle spacing adjustments that make text look right — and most libraries destroy it. Characters shift, typography breaks.
+Text splitting sounds simple: wrap each character in a `<span>`. But fonts have kerning — subtle spacing adjustments between character pairs. Wrap each character in its own element and this spacing breaks.
 
-Fetta preserves original character positions, so your text looks exactly the same after splitting. Just animatable.
+Most splitting libraries don't account for this, including GSAP's [SplitText](https://gsap.com/docs/v3/Plugins/SplitText/) plugin:
 
-{/* Video or GIF comparison here */}
+<KerningComparison />
+
+Fetta measures character positions before splitting, then applies margin adjustments to preserve the original spacing after splitting.
 
 ## Features
 
@@ -40,6 +43,20 @@ Fetta preserves original character positions, so your text looks exactly the sam
 **Safari**: Kerning compensation is not available in Safari due to its Range API returning integer values instead of sub-pixel precision. When using `revertOnComplete` with char splitting, font kerning is automatically disabled to prevent visual shift on revert.
 
 ## Quick Example
+
+### Vanilla JavaScript
+
+```ts title="main.ts"
+import { splitText } from 'fetta';
+import { animate, stagger } from 'motion';
+
+const element = document.querySelector('h1');
+const { chars } = splitText(element);
+
+animate(chars, { opacity: [0, 1] }, { delay: stagger(0.02) });
+```
+
+### React
 
 ```tsx title="App.tsx"
 import { SplitText } from 'fetta/react';

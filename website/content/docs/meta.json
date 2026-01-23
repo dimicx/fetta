@@ -8,7 +8,7 @@
     "api/core",
     "api/react",
     "---Examples---",
-    "examples/react",
-    "examples/vanilla"
+    "examples/vanilla",
+    "examples/react"
   ]
 }
