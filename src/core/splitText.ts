@@ -81,13 +81,11 @@ interface AncestorInfo {
 
 interface MeasuredChar {
   char: string;
-  left: number;
   ancestors: AncestorInfo[];  // ancestor chain from innermost to outermost
 }
 
 interface MeasuredWord {
   chars: MeasuredChar[];
-  startLeft: number;
   /** If true, no space should be added before this word (e.g., continuation after dash) */
   noSpaceBefore: boolean;
 }
@@ -483,18 +481,16 @@ function buildAncestorChain(
 }
 
 /**
- * Measure character positions in the original text using Range API.
+ * Collect text structure from element.
  * Splits at whitespace AND after em-dashes/en-dashes for natural wrapping.
  * Preserves ancestor chain for each character to support nested inline elements.
  *
  * @param trackAncestors - When false, skips ancestor chain building for better performance
  */
-function measureOriginalText(
+function collectTextStructure(
   element: HTMLElement,
-  splitChars: boolean,
   trackAncestors: boolean
 ): MeasuredWord[] {
-  const range = document.createRange();
   const words: MeasuredWord[] = [];
 
   // Only create ancestor cache if we need to track ancestors
@@ -504,18 +500,15 @@ function measureOriginalText(
   let node: Text | null;
 
   let currentWord: MeasuredChar[] = [];
-  let wordStartLeft: number | null = null;
   let noSpaceBeforeNext = false;
 
   const pushWord = () => {
     if (currentWord.length > 0) {
       words.push({
         chars: currentWord,
-        startLeft: wordStartLeft ?? 0,
         noSpaceBefore: noSpaceBeforeNext,
       });
       currentWord = [];
-      wordStartLeft = null;
       noSpaceBeforeNext = false;
     }
   };
@@ -533,39 +526,21 @@ function measureOriginalText(
 
     // Segment into grapheme clusters for proper emoji/complex character handling
     const graphemes = segmentGraphemes(text);
-    let charOffset = 0;
 
     for (const grapheme of graphemes) {
       // Whitespace = word boundary (with space before next word)
       if (grapheme === " " || grapheme === "\n" || grapheme === "\t") {
         pushWord();
-        charOffset += grapheme.length;
         continue;
       }
 
-      if (splitChars) {
-        // Measure character position using Range API (only if splitting chars)
-        range.setStart(node, charOffset);
-        range.setEnd(node, charOffset + grapheme.length);
-        const rect = range.getBoundingClientRect();
-
-        if (wordStartLeft === null) {
-          wordStartLeft = rect.left;
-        }
-
-        currentWord.push({ char: grapheme, left: rect.left, ancestors });
-      } else {
-        // If not splitting chars, just collect the characters without measuring
-        currentWord.push({ char: grapheme, left: 0, ancestors });
-      }
+      currentWord.push({ char: grapheme, ancestors });
 
       // Break AFTER dash characters (dash stays with preceding text)
       if (BREAK_CHARS.has(grapheme)) {
         pushWord();
         noSpaceBeforeNext = true; // Next word continues without space
       }
-
-      charOffset += grapheme.length;
     }
   }
 
@@ -1235,8 +1210,8 @@ export function splitText(
   // Check once if we need to track nested inline elements (performance optimization)
   const trackAncestors = hasInlineDescendants(element);
 
-  // Collect text structure (kerning is measured separately via canvas)
-  const measuredWords = measureOriginalText(element, false, trackAncestors);
+  // Collect text structure (kerning is measured separately in performSplit)
+  const measuredWords = collectTextStructure(element, trackAncestors);
 
   // Perform the split
   // For simple text, add aria-hidden to each span (GSAP-style approach)
@@ -1357,7 +1332,7 @@ export function splitText(
           if (!isActive) return;
 
           // Re-measure and re-split (trackAncestors is stable since originalHTML doesn't change)
-          const newMeasuredWords = measureOriginalText(element, false, trackAncestors);
+          const newMeasuredWords = collectTextStructure(element, trackAncestors);
           const result = performSplit(
             element,
             newMeasuredWords,
