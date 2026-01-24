@@ -265,12 +265,6 @@ Requires:
 - `IntersectionObserver`
 - `Intl.Segmenter`
 
-### Safari
-
-Kerning compensation is not available in Safari because its text measurement doesn't accurately match the visual rendering. Text splitting works normally, just without the margin adjustments.
-
-When using `revertOnComplete` with character splitting in Safari, font kerning is automatically disabled to prevent visual shift on revert.
-
 ## License
 
 MIT

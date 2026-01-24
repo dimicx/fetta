@@ -109,11 +109,6 @@ const INLINE_ELEMENTS = new Set([
   'samp', 'small', 'span', 'strong', 'sub', 'sup', 'time', 'u', 'var',
 ]);
 
-// Safari detection - still used for revertOnComplete font-kerning workaround
-const isSafari = typeof navigator !== 'undefined' &&
-  /Safari/.test(navigator.userAgent) &&
-  !/Chrome/.test(navigator.userAgent);
-
 /**
  * Measure kerning between character pairs using Canvas API.
  * Kerning = pair width - char1 width - char2 width
@@ -798,7 +793,7 @@ function performSplit(
     }
 
     // Apply kerning compensation using Canvas API
-    // Canvas measures kerning consistently across browsers (including Safari)
+    // Measure and apply kerning compensation using Canvas API
     if (splitChars && allChars.length > 1) {
       // Get all characters as strings
       const charStrings = allChars.map(c => c.textContent || '');
@@ -1128,13 +1123,6 @@ export function splitText(
     element.style.fontVariantLigatures = "none";
   }
 
-  // Safari workaround: disable font kerning when using revertOnComplete with chars
-  // Since we can't compensate for kerning in Safari, disabling it ensures
-  // the text doesn't shift when reverting to original HTML
-  if (isSafari && splitChars && revertOnComplete) {
-    element.style.fontKerning = "none";
-  }
-
   // Check once if we need to track nested inline elements (performance optimization)
   const trackAncestors = hasInlineDescendants(element);
 
@@ -1214,11 +1202,6 @@ export function splitText(
     // Keep ligatures disabled if we split chars (prevents visual shift on revert)
     if (splitChars) {
       element.style.fontVariantLigatures = "none";
-    }
-
-    // Keep font kerning disabled in Safari (prevents visual shift on revert)
-    if (isSafari && splitChars && revertOnComplete) {
-      element.style.fontKerning = "none";
     }
 
     // Auto-dispose when reverted
