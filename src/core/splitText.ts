@@ -109,7 +109,7 @@ const INLINE_ELEMENTS = new Set([
   'samp', 'small', 'span', 'strong', 'sub', 'sup', 'time', 'u', 'var',
 ]);
 
-// Safari's Range API returns integer pixel values, breaking kerning compensation
+// Safari's Range API measurements don't accurately match visual rendering, so kerning compensation is disabled
 const isSafari = typeof navigator !== 'undefined' &&
   /Safari/.test(navigator.userAgent) &&
   !/Chrome/.test(navigator.userAgent);
@@ -766,7 +766,6 @@ function performSplit(
     }
 
     // Apply kerning compensation (if splitting chars and not Safari)
-    // Safari's Range API only returns integers, breaking the compensation
     // Use allChars array directly since char spans may be nested in ancestor wrappers
     if (splitChars && allChars.length > 1 && !isSafari) {
       // Use Range API to measure text positions (same as original measurement)
@@ -1125,7 +1124,7 @@ export function splitText(
   // Check once if we need to track nested inline elements (performance optimization)
   const trackAncestors = hasInlineDescendants(element);
 
-  // Skip char measurements in Safari (Range API returns integers, breaking kerning compensation)
+  // Skip char measurements in Safari (kerning compensation disabled)
   const measureChars = splitChars && !isSafari;
 
   // STEP 1: Measure original character positions BEFORE modifying DOM
