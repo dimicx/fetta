@@ -109,10 +109,56 @@ const INLINE_ELEMENTS = new Set([
   'samp', 'small', 'span', 'strong', 'sub', 'sup', 'time', 'u', 'var',
 ]);
 
-// Safari's Range API measurements don't accurately match visual rendering, so kerning compensation is disabled
+// Safari detection - still used for revertOnComplete font-kerning workaround
 const isSafari = typeof navigator !== 'undefined' &&
   /Safari/.test(navigator.userAgent) &&
   !/Chrome/.test(navigator.userAgent);
+
+/**
+ * Measure kerning between character pairs using Canvas API.
+ * Kerning = pair width - char1 width - char2 width
+ * This is more consistent across browsers than Range API position measurements.
+ * Returns a Map of character index -> kerning adjustment (negative = tighten).
+ */
+function measureKerningWithCanvas(
+  element: HTMLElement,
+  chars: string[]
+): Map<number, number> {
+  const kerningMap = new Map<number, number>();
+
+  if (chars.length < 2) return kerningMap;
+
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return kerningMap;
+
+  const styles = getComputedStyle(element);
+  ctx.font = `${styles.fontStyle} ${styles.fontWeight} ${styles.fontSize} ${styles.fontFamily}`;
+
+  // Measure kerning for each adjacent pair
+  for (let i = 0; i < chars.length - 1; i++) {
+    const char1 = chars[i];
+    const char2 = chars[i + 1];
+    const pair = char1 + char2;
+
+    const pairWidth = ctx.measureText(pair).width;
+    const char1Width = ctx.measureText(char1).width;
+    const char2Width = ctx.measureText(char2).width;
+
+    // Kerning = actual pair width - sum of individual widths
+    // Negative value means characters should be closer (typical kerning)
+    const kerning = pairWidth - char1Width - char2Width;
+
+    // Only store negative kerning (tightening) that's significant (< -0.1px)
+    // Positive values would push letters apart, which kerning never does
+    if (kerning < -0.1) {
+      // Store kerning adjustment for the second character (index i+1)
+      kerningMap.set(i + 1, kerning);
+    }
+  }
+
+  return kerningMap;
+}
 
 // Track whether screen reader styles have been injected
 let srOnlyStylesInjected = false;
@@ -586,13 +632,6 @@ function performSplit(
             charSpan.textContent = measuredChar.char;
             globalCharIndex++;
 
-            // Store expected gap for kerning compensation (gaps between consecutive chars)
-            if (charIndexInWord > 0) {
-              const prevCharLeft = measuredWord.chars[charIndexInWord - 1].left;
-              const gap = measuredChar.left - prevCharLeft;
-              charSpan.dataset.expectedGap = gap.toString();
-            }
-
             // Wrap char in mask wrapper if mask === "chars"
             if (options?.mask === "chars") {
               const charWrapper = createMaskWrapper("inline-block");
@@ -626,13 +665,6 @@ function performSplit(
               });
               charSpan.textContent = measuredChar.char;
               globalCharIndex++;
-
-              // Store expected gap for kerning compensation (gaps between consecutive chars)
-              if (charIndexInWord > 0) {
-                const prevCharLeft = measuredWord.chars[charIndexInWord - 1].left;
-                const gap = measuredChar.left - prevCharLeft;
-                charSpan.dataset.expectedGap = gap.toString();
-              }
 
               // Wrap char in mask wrapper if mask === "chars"
               if (options?.mask === "chars") {
@@ -765,44 +797,26 @@ function performSplit(
       }
     }
 
-    // Apply kerning compensation (if splitting chars and not Safari)
-    // Use allChars array directly since char spans may be nested in ancestor wrappers
-    if (splitChars && allChars.length > 1 && !isSafari) {
-      // Use Range API to measure text positions (same as original measurement)
-      // This ensures we compare glyph positions, not span element positions
-      const range = document.createRange();
-      const positions = allChars.map((c) => {
-        const textNode = c.firstChild;
-        if (textNode && textNode.nodeType === Node.TEXT_NODE) {
-          range.setStart(textNode, 0);
-          range.setEnd(textNode, textNode.textContent?.length || 1);
-          return range.getBoundingClientRect().left;
-        }
-        return c.getBoundingClientRect().left;
-      });
+    // Apply kerning compensation using Canvas API
+    // Canvas measures kerning consistently across browsers (including Safari)
+    if (splitChars && allChars.length > 1) {
+      // Get all characters as strings
+      const charStrings = allChars.map(c => c.textContent || '');
 
-      // Use gap-based compensation (only adjusts spacing between consecutive chars)
-      for (let i = 1; i < allChars.length; i++) {
-        const charSpan = allChars[i];
-        const expectedGap = charSpan.dataset.expectedGap;
+      // Measure kerning for each pair using canvas
+      const kerningMap = measureKerningWithCanvas(element, charStrings);
 
-        if (expectedGap !== undefined) {
-          const originalGap = parseFloat(expectedGap);
-          const currentGap = positions[i] - positions[i - 1];
-          const delta = originalGap - currentGap;
-
-          // Only apply if delta is perceptible (>0.1px) but reasonable (<20px)
-          // Tiny sub-pixel adjustments accumulate and shift subsequent words
-          if (Math.abs(delta) > 0.1 && Math.abs(delta) < 20) {
-            // Apply margin to the char span itself
-            // (or its mask wrapper parent if present)
-            const targetElement = options?.mask === "chars" && charSpan.parentElement
-              ? charSpan.parentElement
-              : charSpan;
-            targetElement.style.marginLeft = `${delta}px`;
-          }
-
-          delete charSpan.dataset.expectedGap;
+      // Apply kerning adjustments (negative only - kerning tightens letter spacing)
+      for (const [charIndex, kerning] of kerningMap) {
+        const charSpan = allChars[charIndex];
+        // Only apply negative kerning (tightening) with sanity bound
+        if (charSpan && kerning < 0 && kerning > -20) {
+          // Apply margin to the char span itself
+          // (or its mask wrapper parent if present)
+          const targetElement = options?.mask === "chars" && charSpan.parentElement
+            ? charSpan.parentElement
+            : charSpan;
+          targetElement.style.marginLeft = `${kerning}px`;
         }
       }
     }
@@ -1124,11 +1138,8 @@ export function splitText(
   // Check once if we need to track nested inline elements (performance optimization)
   const trackAncestors = hasInlineDescendants(element);
 
-  // Skip char measurements in Safari (kerning compensation disabled)
-  const measureChars = splitChars && !isSafari;
-
-  // STEP 1: Measure original character positions BEFORE modifying DOM
-  const measuredWords = measureOriginalText(element, measureChars, trackAncestors);
+  // Collect text structure (kerning is measured separately via canvas)
+  const measuredWords = measureOriginalText(element, false, trackAncestors);
 
   // Perform the split
   // For simple text, add aria-hidden to each span (GSAP-style approach)
@@ -1254,7 +1265,7 @@ export function splitText(
           if (!isActive) return;
 
           // Re-measure and re-split (trackAncestors is stable since originalHTML doesn't change)
-          const newMeasuredWords = measureOriginalText(element, measureChars, trackAncestors);
+          const newMeasuredWords = measureOriginalText(element, false, trackAncestors);
           const result = performSplit(
             element,
             newMeasuredWords,
