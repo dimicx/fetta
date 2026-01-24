@@ -127,12 +127,28 @@ function measureKerningWithCanvas(
   const ctx = canvas.getContext('2d');
   if (!ctx) return kerningMap;
 
+  // Copy text-related styles to Canvas context
   const styles = getComputedStyle(element);
+
+  // Font shorthand (style, weight, size, family - keep it simple to avoid parsing issues)
   ctx.font = `${styles.fontStyle} ${styles.fontWeight} ${styles.fontSize} ${styles.fontFamily}`;
+
+  // Letter spacing (e.g., tracking-tight)
+  if (styles.letterSpacing && styles.letterSpacing !== 'normal') {
+    ctx.letterSpacing = styles.letterSpacing;
+  }
+
+  // Word spacing
+  if (styles.wordSpacing && styles.wordSpacing !== 'normal') {
+    ctx.wordSpacing = styles.wordSpacing;
+  }
 
   // Disable ligatures to match split text behavior (ligatures can't span spans)
   // @ts-expect-error - fontVariantLigatures is a newer Canvas property, not in all TS defs
   if ('fontVariantLigatures' in ctx) ctx.fontVariantLigatures = 'none';
+
+  // Note: We intentionally do NOT copy fontKerning - we want Canvas to measure WITH kerning
+  // so we can detect the kerning values to compensate for
 
   // Measure kerning for each adjacent pair
   for (let i = 0; i < chars.length - 1; i++) {
@@ -147,6 +163,9 @@ function measureKerningWithCanvas(
     // Kerning = actual pair width - sum of individual widths
     // Negative = characters should be closer, Positive = characters should be further apart
     const kerning = pairWidth - char1Width - char2Width;
+
+    // DEBUG
+    console.log(`[kerning] "${pair}": ${kerning}px`);
 
     // Store if significant (> 0.1px in either direction)
     if (Math.abs(kerning) > 0.1) {
