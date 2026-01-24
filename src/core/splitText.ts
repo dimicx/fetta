@@ -125,6 +125,7 @@ function measureKerning(
   if (chars.length < 2) return kerningMap;
 
   // Create a hidden measurement element that inherits styles from the target
+  // Use a span (not div) to match inline text rendering behavior
   const measurer = document.createElement('span');
   measurer.style.cssText = `
     position: absolute;
@@ -157,28 +158,35 @@ function measureKerning(
 
   element.appendChild(measurer);
 
-  // Measure kerning for each adjacent pair
+  // Phase 1: Measure all unique characters (deduplicated)
+  // Build set of unique chars first
+  const uniqueChars = new Set<string>();
+  for (let i = 0; i < chars.length; i++) {
+    uniqueChars.add(chars[i]);
+  }
+
+  // Measure each unique char
+  const charWidths = new Map<string, number>();
+  for (const char of uniqueChars) {
+    measurer.textContent = char;
+    charWidths.set(char, measurer.getBoundingClientRect().width);
+  }
+
+  // Phase 2: Measure all pairs and calculate kerning
   for (let i = 0; i < chars.length - 1; i++) {
     const char1 = chars[i];
     const char2 = chars[i + 1];
-    const pair = char1 + char2;
 
-    // Measure pair width
-    measurer.textContent = pair;
+    measurer.textContent = char1 + char2;
     const pairWidth = measurer.getBoundingClientRect().width;
 
-    // Measure individual char widths
-    measurer.textContent = char1;
-    const char1Width = measurer.getBoundingClientRect().width;
-
-    measurer.textContent = char2;
-    const char2Width = measurer.getBoundingClientRect().width;
+    const char1Width = charWidths.get(char1)!;
+    const char2Width = charWidths.get(char2)!;
 
     // Kerning = actual pair width - sum of individual widths
     const kerning = pairWidth - char1Width - char2Width;
 
     // Store if significant (> 0.01px)
-    // Lower threshold captures subpixel adjustments for accurate compensation
     if (Math.abs(kerning) > 0.01) {
       kerningMap.set(i + 1, kerning);
     }
