@@ -1,7 +1,7 @@
 /**
  * Custom splitText implementation with built-in kerning compensation.
- * Measures character positions before splitting, applies compensation,
- * then detects lines based on actual rendered positions.
+ * Measures kerning between character pairs, splits text into spans,
+ * applies margin compensation, and detects lines based on rendered positions.
  */
 
 /**
@@ -109,13 +109,14 @@ const INLINE_ELEMENTS = new Set([
   'samp', 'small', 'span', 'strong', 'sub', 'sup', 'time', 'u', 'var',
 ]);
 
+
 /**
- * Measure kerning between character pairs using Canvas API.
+ * Measure kerning between character pairs using a DOM element.
+ * Uses actual DOM rendering to capture all inherited styles including font-smoothing.
  * Kerning = pair width - char1 width - char2 width
- * This is more consistent across browsers than Range API position measurements.
  * Returns a Map of character index -> kerning adjustment (negative = tighten).
  */
-function measureKerningWithCanvas(
+function measureKerning(
   element: HTMLElement,
   chars: string[]
 ): Map<number, number> {
@@ -123,32 +124,38 @@ function measureKerningWithCanvas(
 
   if (chars.length < 2) return kerningMap;
 
-  const canvas = document.createElement('canvas');
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return kerningMap;
+  // Create a hidden measurement element that inherits styles from the target
+  const measurer = document.createElement('span');
+  measurer.style.cssText = `
+    position: absolute;
+    visibility: hidden;
+    white-space: pre;
+  `;
 
-  // Copy text-related styles to Canvas context
+  // Copy computed styles that affect text measurement
   const styles = getComputedStyle(element);
+  measurer.style.font = styles.font;
+  measurer.style.letterSpacing = styles.letterSpacing;
+  measurer.style.wordSpacing = styles.wordSpacing;
+  measurer.style.fontKerning = styles.fontKerning;
+  measurer.style.fontVariantLigatures = 'none';
 
-  // Font shorthand (style, weight, size, family - keep it simple to avoid parsing issues)
-  ctx.font = `${styles.fontStyle} ${styles.fontWeight} ${styles.fontSize} ${styles.fontFamily}`;
+  // Copy font smoothing (critical for Safari antialiased rendering accuracy)
+  // @ts-expect-error - webkit property
+  const webkitSmoothing = styles.webkitFontSmoothing || styles['-webkit-font-smoothing'];
+  // @ts-expect-error - moz property
+  const mozSmoothing = styles.MozOsxFontSmoothing || styles['-moz-osx-font-smoothing'];
 
-  // Letter spacing (e.g., tracking-tight)
-  if (styles.letterSpacing && styles.letterSpacing !== 'normal') {
-    ctx.letterSpacing = styles.letterSpacing;
+  if (webkitSmoothing) {
+    // @ts-expect-error - webkit property
+    measurer.style.webkitFontSmoothing = webkitSmoothing;
+  }
+  if (mozSmoothing) {
+    // @ts-expect-error - moz property
+    measurer.style.MozOsxFontSmoothing = mozSmoothing;
   }
 
-  // Word spacing
-  if (styles.wordSpacing && styles.wordSpacing !== 'normal') {
-    ctx.wordSpacing = styles.wordSpacing;
-  }
-
-  // Disable ligatures to match split text behavior (ligatures can't span spans)
-  // @ts-expect-error - fontVariantLigatures is a newer Canvas property, not in all TS defs
-  if ('fontVariantLigatures' in ctx) ctx.fontVariantLigatures = 'none';
-
-  // Note: We intentionally do NOT copy fontKerning - we want Canvas to measure WITH kerning
-  // so we can detect the kerning values to compensate for
+  element.appendChild(measurer);
 
   // Measure kerning for each adjacent pair
   for (let i = 0; i < chars.length - 1; i++) {
@@ -156,22 +163,29 @@ function measureKerningWithCanvas(
     const char2 = chars[i + 1];
     const pair = char1 + char2;
 
-    const pairWidth = ctx.measureText(pair).width;
-    const char1Width = ctx.measureText(char1).width;
-    const char2Width = ctx.measureText(char2).width;
+    // Measure pair width
+    measurer.textContent = pair;
+    const pairWidth = measurer.getBoundingClientRect().width;
+
+    // Measure individual char widths
+    measurer.textContent = char1;
+    const char1Width = measurer.getBoundingClientRect().width;
+
+    measurer.textContent = char2;
+    const char2Width = measurer.getBoundingClientRect().width;
 
     // Kerning = actual pair width - sum of individual widths
-    // Negative = characters should be closer, Positive = characters should be further apart
     const kerning = pairWidth - char1Width - char2Width;
 
-    // DEBUG
-    console.log(`[kerning] "${pair}": ${kerning}px`);
-
-    // Store if significant (> 0.1px in either direction)
-    if (Math.abs(kerning) > 0.1) {
+    // Store if significant (> 0.01px)
+    // Lower threshold captures subpixel adjustments for accurate compensation
+    if (Math.abs(kerning) > 0.01) {
       kerningMap.set(i + 1, kerning);
     }
   }
+
+  // Clean up
+  element.removeChild(measurer);
 
   return kerningMap;
 }
@@ -813,7 +827,7 @@ function performSplit(
       }
     }
 
-    // Apply kerning compensation using Canvas API
+    // Apply kerning compensation
     // Measure kerning per word (not across word boundaries where spaces exist)
     if (splitChars && allWords.length > 0) {
       for (const wordSpan of allWords) {
@@ -821,7 +835,7 @@ function performSplit(
         if (wordChars.length < 2) continue;
 
         const charStrings = wordChars.map(c => c.textContent || '');
-        const kerningMap = measureKerningWithCanvas(element, charStrings);
+        const kerningMap = measureKerning(element, charStrings);
 
         // Apply kerning adjustments (negative = tighter, positive = looser)
         for (const [charIndex, kerning] of kerningMap) {

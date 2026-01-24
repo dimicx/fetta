@@ -6,7 +6,7 @@ Split text into characters, words, and lines while preserving the original typog
 
 ## Features
 
-- **Kerning Compensation** — Measures character positions before splitting, then applies margin adjustments to maintain original spacing
+- **Kerning Compensation** — Measures kerning between character pairs, applies margin adjustments to maintain original spacing
 - **Nested Elements** — Preserves inline HTML elements (`<a>`, `<em>`, `<strong>`, etc.) with all attributes intact
 - **Line Detection** — Detects lines based on Y-position clustering, works with any container width
 - **Dash Handling** — Allows text to wrap naturally after em-dashes, en-dashes, and hyphens
