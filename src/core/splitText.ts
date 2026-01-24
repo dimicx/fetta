@@ -130,6 +130,10 @@ function measureKerningWithCanvas(
   const styles = getComputedStyle(element);
   ctx.font = `${styles.fontStyle} ${styles.fontWeight} ${styles.fontSize} ${styles.fontFamily}`;
 
+  // Disable ligatures to match split text behavior (ligatures can't span spans)
+  // @ts-expect-error - fontVariantLigatures is a newer Canvas property, not in all TS defs
+  if ('fontVariantLigatures' in ctx) ctx.fontVariantLigatures = 'none';
+
   // Measure kerning for each adjacent pair
   for (let i = 0; i < chars.length - 1; i++) {
     const char1 = chars[i];
@@ -141,13 +145,11 @@ function measureKerningWithCanvas(
     const char2Width = ctx.measureText(char2).width;
 
     // Kerning = actual pair width - sum of individual widths
-    // Negative value means characters should be closer (typical kerning)
+    // Negative = characters should be closer, Positive = characters should be further apart
     const kerning = pairWidth - char1Width - char2Width;
 
-    // Only store negative kerning (tightening) that's significant (< -0.1px)
-    // Positive values would push letters apart, which kerning never does
-    if (kerning < -0.1) {
-      // Store kerning adjustment for the second character (index i+1)
+    // Store if significant (> 0.1px in either direction)
+    if (Math.abs(kerning) > 0.1) {
       kerningMap.set(i + 1, kerning);
     }
   }
@@ -793,25 +795,27 @@ function performSplit(
     }
 
     // Apply kerning compensation using Canvas API
-    // Measure and apply kerning compensation using Canvas API
-    if (splitChars && allChars.length > 1) {
-      // Get all characters as strings
-      const charStrings = allChars.map(c => c.textContent || '');
+    // Measure kerning per word (not across word boundaries where spaces exist)
+    if (splitChars && allWords.length > 0) {
+      for (const wordSpan of allWords) {
+        const wordChars = Array.from(wordSpan.querySelectorAll<HTMLSpanElement>(`.${charClass}`));
+        if (wordChars.length < 2) continue;
 
-      // Measure kerning for each pair using canvas
-      const kerningMap = measureKerningWithCanvas(element, charStrings);
+        const charStrings = wordChars.map(c => c.textContent || '');
+        const kerningMap = measureKerningWithCanvas(element, charStrings);
 
-      // Apply kerning adjustments (negative only - kerning tightens letter spacing)
-      for (const [charIndex, kerning] of kerningMap) {
-        const charSpan = allChars[charIndex];
-        // Only apply negative kerning (tightening) with sanity bound
-        if (charSpan && kerning < 0 && kerning > -20) {
-          // Apply margin to the char span itself
-          // (or its mask wrapper parent if present)
-          const targetElement = options?.mask === "chars" && charSpan.parentElement
-            ? charSpan.parentElement
-            : charSpan;
-          targetElement.style.marginLeft = `${kerning}px`;
+        // Apply kerning adjustments (negative = tighter, positive = looser)
+        for (const [charIndex, kerning] of kerningMap) {
+          const charSpan = wordChars[charIndex];
+          // Apply with sanity bound (< 20px in either direction)
+          if (charSpan && Math.abs(kerning) < 20) {
+            // Apply margin to the char span itself
+            // (or its mask wrapper parent if present)
+            const targetElement = options?.mask === "chars" && charSpan.parentElement
+              ? charSpan.parentElement
+              : charSpan;
+            targetElement.style.marginLeft = `${kerning}px`;
+          }
         }
       }
     }
