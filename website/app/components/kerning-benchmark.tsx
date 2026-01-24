@@ -9,65 +9,8 @@ interface BenchmarkResult {
   samples: number;
 }
 
-// DOM-based kerning measurement (sequential - OLD implementation)
-function measureKerningDOMSequential(
-  element: HTMLElement,
-  chars: string[]
-): Map<number, number> {
-  const kerningMap = new Map<number, number>();
-  if (chars.length < 2) return kerningMap;
-
-  const measurer = document.createElement("span");
-  measurer.style.cssText = `position: absolute; visibility: hidden; white-space: pre;`;
-
-  const styles = getComputedStyle(element);
-  measurer.style.font = styles.font;
-  measurer.style.letterSpacing = styles.letterSpacing;
-  measurer.style.wordSpacing = styles.wordSpacing;
-  measurer.style.fontKerning = styles.fontKerning;
-  measurer.style.fontVariantLigatures = "none";
-
-  // @ts-expect-error - webkit property
-  const webkitSmoothing = styles.webkitFontSmoothing;
-  // @ts-expect-error - moz property
-  const mozSmoothing = styles.MozOsxFontSmoothing;
-  if (webkitSmoothing) {
-    // @ts-expect-error - webkit property
-    measurer.style.webkitFontSmoothing = webkitSmoothing;
-  }
-  if (mozSmoothing) {
-    // @ts-expect-error - moz property
-    measurer.style.MozOsxFontSmoothing = mozSmoothing;
-  }
-
-  element.appendChild(measurer);
-
-  for (let i = 0; i < chars.length - 1; i++) {
-    const char1 = chars[i];
-    const char2 = chars[i + 1];
-    const pair = char1 + char2;
-
-    measurer.textContent = pair;
-    const pairWidth = measurer.getBoundingClientRect().width;
-
-    measurer.textContent = char1;
-    const char1Width = measurer.getBoundingClientRect().width;
-
-    measurer.textContent = char2;
-    const char2Width = measurer.getBoundingClientRect().width;
-
-    const kerning = pairWidth - char1Width - char2Width;
-    if (Math.abs(kerning) > 0.01) {
-      kerningMap.set(i + 1, kerning);
-    }
-  }
-
-  element.removeChild(measurer);
-  return kerningMap;
-}
-
-// DOM-based kerning measurement (optimized - NEW implementation)
-// Deduplicates character measurements, still measures pairs individually
+// DOM-based kerning measurement (optimized for Safari)
+// Deduplicates character measurements, inherits -webkit-font-smoothing
 function measureKerningDOMOptimized(
   element: HTMLElement,
   chars: string[]
@@ -129,7 +72,7 @@ function measureKerningDOMOptimized(
   return kerningMap;
 }
 
-// Canvas-based kerning measurement (previous implementation)
+// Canvas-based kerning measurement (for Chrome/Firefox/Edge)
 function measureKerningCanvas(
   element: HTMLElement,
   chars: string[]
@@ -138,21 +81,38 @@ function measureKerningCanvas(
   if (chars.length < 2) return kerningMap;
 
   const canvas = document.createElement("canvas");
-  const ctx = canvas.getContext("2d")!;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return kerningMap;
 
   const styles = getComputedStyle(element);
-  ctx.font = styles.font;
 
+  // Build font string manually for consistency
+  ctx.font = `${styles.fontStyle} ${styles.fontWeight} ${styles.fontSize} ${styles.fontFamily}`;
+
+  // Copy letter-spacing and word-spacing
+  if (styles.letterSpacing && styles.letterSpacing !== "normal") {
+    ctx.letterSpacing = styles.letterSpacing;
+  }
+  if (styles.wordSpacing && styles.wordSpacing !== "normal") {
+    ctx.wordSpacing = styles.wordSpacing;
+  }
+
+  // Disable ligatures to match split text behavior
+  if ("fontVariantLigatures" in ctx) ctx.fontVariantLigatures = "none";
+
+  // Measure unique chars first (deduplicated)
+  const charWidths = new Map<string, number>();
+  for (const char of new Set(chars)) {
+    charWidths.set(char, ctx.measureText(char).width);
+  }
+
+  // Measure pairs and calculate kerning
   for (let i = 0; i < chars.length - 1; i++) {
     const char1 = chars[i];
     const char2 = chars[i + 1];
-    const pair = char1 + char2;
+    const pairWidth = ctx.measureText(char1 + char2).width;
+    const kerning = pairWidth - charWidths.get(char1)! - charWidths.get(char2)!;
 
-    const pairWidth = ctx.measureText(pair).width;
-    const char1Width = ctx.measureText(char1).width;
-    const char2Width = ctx.measureText(char2).width;
-
-    const kerning = pairWidth - char1Width - char2Width;
     if (Math.abs(kerning) > 0.01) {
       kerningMap.set(i + 1, kerning);
     }
@@ -259,23 +219,19 @@ export function KerningBenchmark() {
       const runForText = (text: string): BenchmarkResult[] => {
         const chars = [...text];
 
-        const domOptimizedResult = runBenchmark(() =>
-          measureKerningDOMOptimized(element, chars)
-        );
-        const domSequentialResult = runBenchmark(() =>
-          measureKerningDOMSequential(element, chars)
-        );
         const canvasResult = runBenchmark(() =>
           measureKerningCanvas(element, chars)
+        );
+        const domOptimizedResult = runBenchmark(() =>
+          measureKerningDOMOptimized(element, chars)
         );
         const rangeResult = runBenchmark(() =>
           measureKerningRange(element, chars)
         );
 
         return [
-          { name: "DOM optimized (current)", ...domOptimizedResult },
-          { name: "DOM sequential (old)", ...domSequentialResult },
-          { name: "Canvas-based", ...canvasResult },
+          { name: "Canvas (Chrome/FF/Edge)", ...canvasResult },
+          { name: "DOM optimized (Safari)", ...domOptimizedResult },
           { name: "Range API", ...rangeResult },
         ];
       };

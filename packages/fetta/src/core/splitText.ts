@@ -116,16 +116,79 @@ const INLINE_ELEMENTS = new Set([
  * Kerning = pair width - char1 width - char2 width
  * Returns a Map of character index -> kerning adjustment (negative = tighten).
  */
-function measureKerning(
+// Detect Safari browser (cached)
+let isSafariBrowser: boolean | null = null;
+function isSafari(): boolean {
+  if (isSafariBrowser !== null) return isSafariBrowser;
+  if (typeof navigator === 'undefined') return false;
+  isSafariBrowser = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+  return isSafariBrowser;
+}
+
+/**
+ * Measure kerning using Canvas API.
+ * Fast but cannot inherit -webkit-font-smoothing (inaccurate in Safari with antialiased fonts).
+ */
+function measureKerningCanvas(
   element: HTMLElement,
   chars: string[]
 ): Map<number, number> {
   const kerningMap = new Map<number, number>();
-
   if (chars.length < 2) return kerningMap;
 
-  // Create a hidden measurement element that inherits styles from the target
-  // Use a span (not div) to match inline text rendering behavior
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return kerningMap;
+
+  const styles = getComputedStyle(element);
+
+  // Build font string manually for consistency
+  ctx.font = `${styles.fontStyle} ${styles.fontWeight} ${styles.fontSize} ${styles.fontFamily}`;
+
+  // Copy letter-spacing and word-spacing to Canvas context
+  if (styles.letterSpacing && styles.letterSpacing !== 'normal') {
+    ctx.letterSpacing = styles.letterSpacing;
+  }
+  if (styles.wordSpacing && styles.wordSpacing !== 'normal') {
+    ctx.wordSpacing = styles.wordSpacing;
+  }
+
+  // Disable ligatures to match split text behavior (ligatures can't span spans)
+  if ('fontVariantLigatures' in ctx) ctx.fontVariantLigatures = 'none';
+
+  // Measure unique chars first (deduplicated)
+  const charWidths = new Map<string, number>();
+  for (const char of new Set(chars)) {
+    charWidths.set(char, ctx.measureText(char).width);
+  }
+
+  // Measure pairs and calculate kerning
+  for (let i = 0; i < chars.length - 1; i++) {
+    const char1 = chars[i];
+    const char2 = chars[i + 1];
+    const pairWidth = ctx.measureText(char1 + char2).width;
+    const kerning = pairWidth - charWidths.get(char1)! - charWidths.get(char2)!;
+
+    if (Math.abs(kerning) > 0.01) {
+      kerningMap.set(i + 1, kerning);
+    }
+  }
+
+  return kerningMap;
+}
+
+/**
+ * Measure kerning using DOM elements.
+ * Slower but accurate - inherits all styles including -webkit-font-smoothing.
+ * Used for Safari where Canvas measurements don't match rendered text.
+ */
+function measureKerningDOM(
+  element: HTMLElement,
+  chars: string[]
+): Map<number, number> {
+  const kerningMap = new Map<number, number>();
+  if (chars.length < 2) return kerningMap;
+
   const measurer = document.createElement('span');
   measurer.style.cssText = `
     position: absolute;
@@ -133,7 +196,6 @@ function measureKerning(
     white-space: pre;
   `;
 
-  // Copy computed styles that affect text measurement
   const styles = getComputedStyle(element);
   measurer.style.font = styles.font;
   measurer.style.letterSpacing = styles.letterSpacing;
@@ -141,12 +203,11 @@ function measureKerning(
   measurer.style.fontKerning = styles.fontKerning;
   measurer.style.fontVariantLigatures = 'none';
 
-  // Copy font smoothing (critical for Safari antialiased rendering accuracy)
+  // Copy font smoothing (critical for Safari)
   // @ts-expect-error - webkit property
   const webkitSmoothing = styles.webkitFontSmoothing || styles['-webkit-font-smoothing'];
   // @ts-expect-error - moz property
   const mozSmoothing = styles.MozOsxFontSmoothing || styles['-moz-osx-font-smoothing'];
-
   if (webkitSmoothing) {
     // @ts-expect-error - webkit property
     measurer.style.webkitFontSmoothing = webkitSmoothing;
@@ -158,44 +219,47 @@ function measureKerning(
 
   element.appendChild(measurer);
 
-  // Phase 1: Measure all unique characters (deduplicated)
-  // Build set of unique chars first
-  const uniqueChars = new Set<string>();
-  for (let i = 0; i < chars.length; i++) {
-    uniqueChars.add(chars[i]);
-  }
-
-  // Measure each unique char
+  // Measure unique chars first (deduplicated)
   const charWidths = new Map<string, number>();
-  for (const char of uniqueChars) {
+  for (const char of new Set(chars)) {
     measurer.textContent = char;
     charWidths.set(char, measurer.getBoundingClientRect().width);
   }
 
-  // Phase 2: Measure all pairs and calculate kerning
+  // Measure pairs and calculate kerning
   for (let i = 0; i < chars.length - 1; i++) {
     const char1 = chars[i];
     const char2 = chars[i + 1];
 
     measurer.textContent = char1 + char2;
     const pairWidth = measurer.getBoundingClientRect().width;
+    const kerning = pairWidth - charWidths.get(char1)! - charWidths.get(char2)!;
 
-    const char1Width = charWidths.get(char1)!;
-    const char2Width = charWidths.get(char2)!;
-
-    // Kerning = actual pair width - sum of individual widths
-    const kerning = pairWidth - char1Width - char2Width;
-
-    // Store if significant (> 0.01px)
     if (Math.abs(kerning) > 0.01) {
       kerningMap.set(i + 1, kerning);
     }
   }
 
-  // Clean up
   element.removeChild(measurer);
-
   return kerningMap;
+}
+
+/**
+ * Measure kerning between character pairs.
+ * Uses Canvas API for speed in Chrome/Firefox/Edge.
+ * Uses DOM measurement in Safari for accuracy with font-smoothing.
+ */
+function measureKerning(
+  element: HTMLElement,
+  chars: string[]
+): Map<number, number> {
+  if (chars.length < 2) return new Map();
+
+  // Safari needs DOM-based measurement for font-smoothing accuracy
+  // Other browsers can use faster Canvas measurement
+  return isSafari()
+    ? measureKerningDOM(element, chars)
+    : measureKerningCanvas(element, chars);
 }
 
 // Track whether screen reader styles have been injected

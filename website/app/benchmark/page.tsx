@@ -13,25 +13,23 @@ export default function BenchmarkPage() {
         <h2>Methods Compared</h2>
         <ul>
           <li>
-            <strong>DOM optimized (current)</strong> — Deduplicates character
-            measurements (each unique char measured once), then measures pairs.
-            Inherits all styles including font-smoothing.
+            <strong>Canvas (Chrome/FF/Edge)</strong> — Uses{" "}
+            <code>measureText()</code>. Very fast. Used for non-Safari browsers.
           </li>
           <li>
-            <strong>DOM sequential (old)</strong> — Measures char1, char2, and
-            pair for every pair (no deduplication). Accurate but slower.
-          </li>
-          <li>
-            <strong>Canvas-based</strong> — Uses{" "}
-            <code>CanvasRenderingContext2D.measureText()</code>. Cannot inherit{" "}
-            <code>-webkit-font-smoothing</code>.
+            <strong>DOM optimized (Safari)</strong> — Uses{" "}
+            <code>getBoundingClientRect()</code> with deduplication. Inherits{" "}
+            <code>-webkit-font-smoothing</code> for Safari accuracy.
           </li>
           <li>
             <strong>Range API</strong> — Uses{" "}
-            <code>Range.getBoundingClientRect()</code> on text nodes. Safari
-            historically returns integer values.
+            <code>Range.getBoundingClientRect()</code>. Reference only.
           </li>
         </ul>
+        <p className="mt-4 text-sm text-muted-foreground">
+          Fetta automatically selects Canvas for Chrome/Firefox/Edge and DOM for
+          Safari.
+        </p>
       </div>
 
       <KerningBenchmark />
