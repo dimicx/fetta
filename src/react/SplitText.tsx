@@ -63,6 +63,12 @@ type CallbackReturn =
 
 interface SplitTextProps {
   children: ReactElement;
+  /** The wrapper element type. Default: "div" */
+  as?: keyof React.JSX.IntrinsicElements;
+  /** Class name for the wrapper element */
+  className?: string;
+  /** Additional styles for the wrapper element (merged with internal styles) */
+  style?: React.CSSProperties;
   /**
    * Called after text is split.
    * Return an animation or promise to enable revert (requires revertOnComplete).
@@ -136,10 +142,13 @@ interface SplitTextProps {
  * </SplitText>
  * ```
  */
-export const SplitText = forwardRef<HTMLDivElement, SplitTextProps>(
+export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
   function SplitText(
     {
       children,
+      as: Component = "div",
+      className,
+      style: userStyle,
       onSplit,
       onResize,
       options,
@@ -151,11 +160,11 @@ export const SplitText = forwardRef<HTMLDivElement, SplitTextProps>(
     },
     forwardedRef
   ) {
-    const containerRef = useRef<HTMLDivElement>(null);
+    const containerRef = useRef<HTMLElement>(null);
 
     // Merge internal ref with forwarded ref
     const mergedRef = useCallback(
-      (node: HTMLDivElement | null) => {
+      (node: HTMLElement | null) => {
         containerRef.current = node;
         if (typeof forwardedRef === "function") {
           forwardedRef(node);
@@ -358,13 +367,15 @@ export const SplitText = forwardRef<HTMLDivElement, SplitTextProps>(
     ref: childRefCallback,
   } as Record<string, unknown>);
 
+  const Wrapper = Component as React.ElementType;
   return (
-    <div
+    <Wrapper
       ref={mergedRef}
-      style={{ visibility: "hidden", position: "relative" }}
+      className={className}
+      style={{ visibility: "hidden", position: "relative", ...userStyle }}
     >
       {clonedChild}
-    </div>
+    </Wrapper>
   );
   }
 );
