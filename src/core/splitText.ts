@@ -109,6 +109,114 @@ const INLINE_ELEMENTS = new Set([
 
 
 /**
+ * Text-related CSS properties that can affect glyph metrics/kerning.
+ * Keep this list focused to avoid unnecessary work while ensuring accuracy.
+ */
+const KERNING_STYLE_PROPS = [
+  "font",
+  "font-kerning",
+  "font-variant-ligatures",
+  "font-feature-settings",
+  "font-variation-settings",
+  "font-optical-sizing",
+  "font-size-adjust",
+  "font-stretch",
+  "font-variant-caps",
+  "font-variant-numeric",
+  "font-variant-east-asian",
+  "font-synthesis",
+  "font-synthesis-weight",
+  "font-synthesis-style",
+  "letter-spacing",
+  "word-spacing",
+  "text-rendering",
+  "text-transform",
+  "direction",
+  "unicode-bidi",
+] as const;
+
+function copyKerningStyles(
+  target: HTMLElement,
+  styles: CSSStyleDeclaration
+): void {
+  KERNING_STYLE_PROPS.forEach((prop) => {
+    const value = styles.getPropertyValue(prop);
+    if (value) target.style.setProperty(prop, value);
+  });
+}
+
+function buildCanvasFontString(styles: CSSStyleDeclaration): string {
+  // Keep this conservative: canvas font parsing varies, and unsupported
+  // tokens can invalidate the entire font string.
+  const fontStyle = styles.fontStyle || "normal";
+  const fontWeight = styles.fontWeight || "normal";
+  const fontSize = styles.fontSize || "16px";
+  const fontFamily = styles.fontFamily || "sans-serif";
+
+  return [fontStyle, fontWeight, fontSize, fontFamily].filter(Boolean).join(" ");
+}
+
+function applyKerningStylesToCanvas(
+  ctx: CanvasRenderingContext2D,
+  styles: CSSStyleDeclaration
+): void {
+  ctx.font = buildCanvasFontString(styles);
+
+  const ctxAny = ctx as CanvasRenderingContext2D & Record<string, unknown>;
+  const setIfExists = (prop: string, value: string) => {
+    if (!value || value === "normal") return;
+    if (prop in ctxAny) ctxAny[prop] = value;
+  };
+
+  setIfExists("fontKerning", styles.getPropertyValue("font-kerning"));
+  setIfExists("fontVariantLigatures", styles.getPropertyValue("font-variant-ligatures"));
+  setIfExists("fontFeatureSettings", styles.getPropertyValue("font-feature-settings"));
+  setIfExists("fontVariationSettings", styles.getPropertyValue("font-variation-settings"));
+  setIfExists("fontOpticalSizing", styles.getPropertyValue("font-optical-sizing"));
+  setIfExists("fontSizeAdjust", styles.getPropertyValue("font-size-adjust"));
+  setIfExists("fontStretch", styles.getPropertyValue("font-stretch"));
+  setIfExists("fontVariantCaps", styles.getPropertyValue("font-variant-caps"));
+  setIfExists("fontVariantNumeric", styles.getPropertyValue("font-variant-numeric"));
+  setIfExists("fontVariantEastAsian", styles.getPropertyValue("font-variant-east-asian"));
+  setIfExists("fontSynthesis", styles.getPropertyValue("font-synthesis"));
+  setIfExists("fontSynthesisWeight", styles.getPropertyValue("font-synthesis-weight"));
+  setIfExists("fontSynthesisStyle", styles.getPropertyValue("font-synthesis-style"));
+  setIfExists("letterSpacing", styles.getPropertyValue("letter-spacing"));
+  setIfExists("wordSpacing", styles.getPropertyValue("word-spacing"));
+  setIfExists("textRendering", styles.getPropertyValue("text-rendering"));
+  setIfExists("direction", styles.getPropertyValue("direction"));
+}
+
+function buildKerningStyleKey(styles: CSSStyleDeclaration): string {
+  return KERNING_STYLE_PROPS.map((prop) => styles.getPropertyValue(prop)).join("|");
+}
+
+function shouldUseDomKerning(styles: CSSStyleDeclaration): boolean {
+  const textTransform = styles.getPropertyValue("text-transform");
+  if (textTransform && textTransform !== "none") return true;
+
+  const fontVariant = styles.getPropertyValue("font-variant");
+  if (fontVariant && fontVariant !== "normal") return true;
+
+  const fontStretch = styles.getPropertyValue("font-stretch");
+  if (fontStretch && fontStretch !== "normal" && fontStretch !== "100%") return true;
+
+  const fontFeatureSettings = styles.getPropertyValue("font-feature-settings");
+  if (fontFeatureSettings && fontFeatureSettings !== "normal") return true;
+
+  const fontVariationSettings = styles.getPropertyValue("font-variation-settings");
+  if (fontVariationSettings && fontVariationSettings !== "normal") return true;
+
+  const fontOpticalSizing = styles.getPropertyValue("font-optical-sizing");
+  if (fontOpticalSizing && fontOpticalSizing !== "auto") return true;
+
+  const fontSizeAdjust = styles.getPropertyValue("font-size-adjust");
+  if (fontSizeAdjust && fontSizeAdjust !== "none") return true;
+
+  return false;
+}
+
+/**
  * Measure kerning between character pairs using a DOM element.
  * Uses actual DOM rendering to capture all inherited styles including font-smoothing.
  * Kerning = pair width - char1 width - char2 width
@@ -128,8 +236,9 @@ function isSafari(): boolean {
  * Fast but cannot inherit -webkit-font-smoothing (inaccurate in Safari with antialiased fonts).
  */
 function measureKerningCanvas(
-  element: HTMLElement,
-  chars: string[]
+  styleSource: HTMLElement,
+  chars: string[],
+  styles?: CSSStyleDeclaration
 ): Map<number, number> {
   const kerningMap = new Map<number, number>();
   if (chars.length < 2) return kerningMap;
@@ -138,21 +247,8 @@ function measureKerningCanvas(
   const ctx = canvas.getContext('2d');
   if (!ctx) return kerningMap;
 
-  const styles = getComputedStyle(element);
-
-  // Build font string manually for consistency
-  ctx.font = `${styles.fontStyle} ${styles.fontWeight} ${styles.fontSize} ${styles.fontFamily}`;
-
-  // Copy letter-spacing and word-spacing to Canvas context
-  if (styles.letterSpacing && styles.letterSpacing !== 'normal') {
-    ctx.letterSpacing = styles.letterSpacing;
-  }
-  if (styles.wordSpacing && styles.wordSpacing !== 'normal') {
-    ctx.wordSpacing = styles.wordSpacing;
-  }
-
-  // Disable ligatures to match split text behavior (ligatures can't span spans)
-  if ('fontVariantLigatures' in ctx) ctx.fontVariantLigatures = 'none';
+  const computedStyles = styles ?? getComputedStyle(styleSource);
+  applyKerningStylesToCanvas(ctx, computedStyles);
 
   // Measure unique chars first (deduplicated)
   const charWidths = new Map<string, number>();
@@ -181,8 +277,10 @@ function measureKerningCanvas(
  * Used for Safari where Canvas measurements don't match rendered text.
  */
 function measureKerningDOM(
-  element: HTMLElement,
-  chars: string[]
+  container: HTMLElement,
+  styleSource: HTMLElement,
+  chars: string[],
+  styles?: CSSStyleDeclaration
 ): Map<number, number> {
   const kerningMap = new Map<number, number>();
   if (chars.length < 2) return kerningMap;
@@ -194,18 +292,14 @@ function measureKerningDOM(
     white-space: pre;
   `;
 
-  const styles = getComputedStyle(element);
-  measurer.style.font = styles.font;
-  measurer.style.letterSpacing = styles.letterSpacing;
-  measurer.style.wordSpacing = styles.wordSpacing;
-  measurer.style.fontKerning = styles.fontKerning;
-  measurer.style.fontVariantLigatures = 'none';
+  const computedStyles = styles ?? getComputedStyle(styleSource);
+  copyKerningStyles(measurer, computedStyles);
 
   // Copy font smoothing (critical for Safari)
   // @ts-expect-error - webkit property
-  const webkitSmoothing = styles.webkitFontSmoothing || styles['-webkit-font-smoothing'];
+  const webkitSmoothing = computedStyles.webkitFontSmoothing || computedStyles['-webkit-font-smoothing'];
   // @ts-expect-error - moz property
-  const mozSmoothing = styles.MozOsxFontSmoothing || styles['-moz-osx-font-smoothing'];
+  const mozSmoothing = computedStyles.MozOsxFontSmoothing || computedStyles['-moz-osx-font-smoothing'];
   if (webkitSmoothing) {
     // @ts-expect-error - webkit property
     measurer.style.webkitFontSmoothing = webkitSmoothing;
@@ -215,7 +309,7 @@ function measureKerningDOM(
     measurer.style.MozOsxFontSmoothing = mozSmoothing;
   }
 
-  element.appendChild(measurer);
+  container.appendChild(measurer);
 
   // Measure unique chars first (deduplicated)
   const charWidths = new Map<string, number>();
@@ -238,7 +332,7 @@ function measureKerningDOM(
     }
   }
 
-  element.removeChild(measurer);
+  container.removeChild(measurer);
   return kerningMap;
 }
 
@@ -248,16 +342,20 @@ function measureKerningDOM(
  * Uses DOM measurement in Safari for accuracy with font-smoothing.
  */
 function measureKerning(
-  element: HTMLElement,
-  chars: string[]
+  container: HTMLElement,
+  styleSource: HTMLElement,
+  chars: string[],
+  styles?: CSSStyleDeclaration
 ): Map<number, number> {
   if (chars.length < 2) return new Map();
 
-  // Safari needs DOM-based measurement for font-smoothing accuracy
-  // Other browsers can use faster Canvas measurement
-  return isSafari()
-    ? measureKerningDOM(element, chars)
-    : measureKerningCanvas(element, chars);
+  const computedStyles = styles ?? getComputedStyle(styleSource);
+
+  // Safari needs DOM-based measurement for font-smoothing accuracy.
+  // Use DOM when advanced font features are in play to avoid canvas parsing issues.
+  return isSafari() || shouldUseDomKerning(computedStyles)
+    ? measureKerningDOM(container, styleSource, chars, computedStyles)
+    : measureKerningCanvas(styleSource, chars, computedStyles);
 }
 
 // Track whether screen reader styles have been injected
@@ -733,9 +831,6 @@ function performSplit(
 
           charGroups.forEach((group) => {
             group.chars.forEach((measuredChar) => {
-              // Calculate original char index within the word for kerning
-              const charIndexInWord = measuredWord.chars.indexOf(measuredChar);
-
               const charSpan = createSpan(charClass, globalCharIndex, "inline-block", {
                 propIndex: options?.propIndex,
                                 propName: "char",
@@ -881,20 +976,53 @@ function performSplit(
         const wordChars = Array.from(wordSpan.querySelectorAll<HTMLSpanElement>(`.${charClass}`));
         if (wordChars.length < 2) continue;
 
-        const charStrings = wordChars.map(c => c.textContent || '');
-        const kerningMap = measureKerning(element, charStrings);
+        // Group consecutive chars by computed style to respect nested inline styles.
+        const styleGroups: Array<{
+          chars: HTMLSpanElement[];
+          styleSource: HTMLSpanElement;
+          styles: CSSStyleDeclaration;
+        }> = [];
 
-        // Apply kerning adjustments (negative = tighter, positive = looser)
-        for (const [charIndex, kerning] of kerningMap) {
-          const charSpan = wordChars[charIndex];
-          // Apply with sanity bound (< 20px in either direction)
-          if (charSpan && Math.abs(kerning) < 20) {
-            // Apply margin to the char span itself
-            // (or its mask wrapper parent if present)
-            const targetElement = options?.mask === "chars" && charSpan.parentElement
-              ? charSpan.parentElement
-              : charSpan;
-            targetElement.style.marginLeft = `${kerning}px`;
+        const firstCharStyles = getComputedStyle(wordChars[0]);
+        let currentKey = buildKerningStyleKey(firstCharStyles);
+        let currentGroup: { chars: HTMLSpanElement[]; styleSource: HTMLSpanElement; styles: CSSStyleDeclaration } = {
+          chars: [wordChars[0]],
+          styleSource: wordChars[0],
+          styles: firstCharStyles,
+        };
+
+        for (let i = 1; i < wordChars.length; i++) {
+          const char = wordChars[i];
+          const charStyles = getComputedStyle(char);
+          const key = buildKerningStyleKey(charStyles);
+          if (key === currentKey) {
+            currentGroup.chars.push(char);
+          } else {
+            styleGroups.push(currentGroup);
+            currentKey = key;
+            currentGroup = { chars: [char], styleSource: char, styles: charStyles };
+          }
+        }
+        styleGroups.push(currentGroup);
+
+        // Measure kerning per style group (no kerning across style boundaries)
+        for (const group of styleGroups) {
+          if (group.chars.length < 2) continue;
+          const charStrings = group.chars.map(c => c.textContent || '');
+          const kerningMap = measureKerning(element, group.styleSource, charStrings, group.styles);
+
+          // Apply kerning adjustments (negative = tighter, positive = looser)
+          for (const [charIndex, kerning] of kerningMap) {
+            const charSpan = group.chars[charIndex];
+            // Apply with sanity bound (< 20px in either direction)
+            if (charSpan && Math.abs(kerning) < 20) {
+              // Apply margin to the char span itself
+              // (or its mask wrapper parent if present)
+              const targetElement = options?.mask === "chars" && charSpan.parentElement
+                ? charSpan.parentElement
+                : charSpan;
+              targetElement.style.marginLeft = `${kerning}px`;
+            }
           }
         }
       }
