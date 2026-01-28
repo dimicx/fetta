@@ -104,6 +104,19 @@ const BREAK_CHARS = new Set([
   "―", // horizontal bar (U+2015)
 ]);
 
+// Regex to detect scripts with contextual shaping where kerning measurement breaks
+// Arabic, Hebrew, Thai, Devanagari, and other complex scripts
+const CONTEXTUAL_SCRIPT_REGEX = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF\u0590-\u05FF\uFB1D-\uFB4F\u0E00-\u0E7F\u0900-\u097F\u0980-\u09FF\u0A00-\u0A7F\u0A80-\u0AFF\u0B00-\u0B7F\u0B80-\u0BFF\u0C00-\u0C7F\u0C80-\u0CFF\u0D00-\u0D7F]/;
+
+/**
+ * Check if text contains scripts with contextual shaping.
+ * These scripts have letters that change form based on position,
+ * making character-by-character kerning measurement inaccurate.
+ */
+function hasContextualScript(chars: string[]): boolean {
+  return chars.some(char => CONTEXTUAL_SCRIPT_REGEX.test(char));
+}
+
 // Inline elements that should be preserved when splitting text
 const INLINE_ELEMENTS = new Set([
   'a', 'abbr', 'acronym', 'b', 'bdi', 'bdo', 'big', 'cite', 'code',
@@ -982,6 +995,12 @@ function performSplit(
         const wordChars = Array.from(wordSpan.querySelectorAll<HTMLSpanElement>(`.${charClass}`));
         if (wordChars.length < 2) continue;
 
+        // Skip kerning for contextual scripts (Arabic, Hebrew, Thai, etc.)
+        // These scripts have letters that change form based on position,
+        // making character-by-character kerning measurement inaccurate.
+        const charStringsForCheck = wordChars.map(c => c.textContent || '');
+        if (hasContextualScript(charStringsForCheck)) continue;
+
         // Group consecutive chars by computed style to respect nested inline styles.
         const styleGroups: Array<{
           chars: HTMLSpanElement[];
@@ -1051,6 +1070,9 @@ function performSplit(
         const firstChar = firstCharSpan.textContent || '';
         if (!lastChar || !firstChar) continue;
 
+        // Skip kerning for contextual scripts
+        if (hasContextualScript([lastChar, firstChar])) continue;
+
         // Measure the full cross-word kerning: "lastChar + space + firstChar"
         // Total kerning = width("X Y") - width("X") - width(" ") - width("Y")
         const styles = getComputedStyle(firstCharSpan);
@@ -1085,6 +1107,9 @@ function performSplit(
         // Get last char of previous word and first char of current word
         const lastChar = prevText[prevText.length - 1];
         const firstChar = currText[0];
+
+        // Skip kerning for contextual scripts
+        if (hasContextualScript([lastChar, firstChar])) continue;
 
         // Measure the full cross-word kerning
         const styles = getComputedStyle(currWord);
