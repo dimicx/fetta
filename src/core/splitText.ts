@@ -972,8 +972,8 @@ function performSplit(
     }
 
     // Apply kerning compensation
-    // Measure kerning per word (not across word boundaries where spaces exist)
     if (splitChars && allWords.length > 0) {
+      // 1. Measure kerning within each word
       for (const wordSpan of allWords) {
         const wordChars = Array.from(wordSpan.querySelectorAll<HTMLSpanElement>(`.${charClass}`));
         if (wordChars.length < 2) continue;
@@ -1026,6 +1026,44 @@ function performSplit(
               targetElement.style.marginLeft = `${kerning}px`;
             }
           }
+        }
+      }
+
+      // 2. Measure kerning across word boundaries (lastChar + space + firstChar)
+      for (let wordIdx = 1; wordIdx < allWords.length; wordIdx++) {
+        // Skip words that don't have a space before them (dash continuations)
+        if (noSpaceBeforeSet.has(allWords[wordIdx])) continue;
+
+        const prevWord = allWords[wordIdx - 1];
+        const currWord = allWords[wordIdx];
+        const prevChars = Array.from(prevWord.querySelectorAll<HTMLSpanElement>(`.${charClass}`));
+        const currChars = Array.from(currWord.querySelectorAll<HTMLSpanElement>(`.${charClass}`));
+
+        if (prevChars.length === 0 || currChars.length === 0) continue;
+
+        const lastCharSpan = prevChars[prevChars.length - 1];
+        const firstCharSpan = currChars[0];
+        const lastChar = lastCharSpan.textContent || '';
+        const firstChar = firstCharSpan.textContent || '';
+        if (!lastChar || !firstChar) continue;
+
+        // Measure the full cross-word kerning: "lastChar + space + firstChar"
+        // Total kerning = width("X Y") - width("X") - width(" ") - width("Y")
+        const styles = getComputedStyle(firstCharSpan);
+        const sequence = lastChar + " " + firstChar;
+        const kerningMap = measureKerning(element, firstCharSpan, [lastChar, " ", firstChar], styles);
+
+        // kerningMap will have kerning at index 1 (space) and index 2 (firstChar)
+        // We apply the sum to the first char of the next word
+        let totalKerning = 0;
+        if (kerningMap.has(1)) totalKerning += kerningMap.get(1)!;
+        if (kerningMap.has(2)) totalKerning += kerningMap.get(2)!;
+
+        if (Math.abs(totalKerning) > 0.01 && Math.abs(totalKerning) < 20) {
+          const targetElement = options?.mask === "chars" && firstCharSpan.parentElement
+            ? firstCharSpan.parentElement
+            : firstCharSpan;
+          targetElement.style.marginLeft = `${totalKerning}px`;
         }
       }
     }
