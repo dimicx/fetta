@@ -26,6 +26,10 @@ interface SplitTextOptions {
   /** Apply overflow mask wrapper to elements for reveal animations */
   mask?: "lines" | "words" | "chars";
   propIndex?: boolean;
+  /** Skip kerning compensation (no margin adjustments applied).
+   * Kerning is naturally lost when splitting into inline-block spans.
+   * Use this if you prefer no compensation over imperfect Safari compensation. */
+  disableKerning?: boolean;
 }
 
 interface InViewOptions {

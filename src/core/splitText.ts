@@ -50,6 +50,10 @@ export interface SplitTextOptions {
   revertOnComplete?: boolean;
   /** Add CSS custom properties (--char-index, --word-index, --line-index) */
   propIndex?: boolean;
+  /** Skip kerning compensation (no margin adjustments applied).
+   * Kerning is naturally lost when splitting into inline-block spans.
+   * Use this if you prefer no compensation over imperfect Safari compensation. */
+  disableKerning?: boolean;
 }
 
 /**
@@ -754,7 +758,7 @@ function performSplit(
   splitChars: boolean,
   splitWords: boolean,
   splitLines: boolean,
-  options?: { propIndex?: boolean; mask?: "lines" | "words" | "chars"; ariaHidden?: boolean }
+  options?: { propIndex?: boolean; mask?: "lines" | "words" | "chars"; ariaHidden?: boolean; disableKerning?: boolean }
 ): {
   chars: HTMLSpanElement[];
   words: HTMLSpanElement[];
@@ -971,8 +975,8 @@ function performSplit(
       }
     }
 
-    // Apply kerning compensation
-    if (splitChars && allWords.length > 0) {
+    // Apply kerning compensation (skip if disableKerning is true)
+    if (!options?.disableKerning && splitChars && allWords.length > 0) {
       // 1. Measure kerning within each word
       for (const wordSpan of allWords) {
         const wordChars = Array.from(wordSpan.querySelectorAll<HTMLSpanElement>(`.${charClass}`));
@@ -1065,7 +1069,7 @@ function performSplit(
           targetElement.style.marginLeft = `${totalKerning}px`;
         }
       }
-    } else if (splitWords && allWords.length > 1) {
+    } else if (!options?.disableKerning && splitWords && allWords.length > 1) {
       // Cross-word kerning for word-only splitting (no char spans)
       // Apply margin to the word span itself
       for (let wordIdx = 1; wordIdx < allWords.length; wordIdx++) {
@@ -1351,6 +1355,7 @@ export function splitText(
     onSplit,
     revertOnComplete = false,
     propIndex = false,
+    disableKerning = false,
   }: SplitTextOptions = {}
 ): SplitTextResult {
   // Validation
@@ -1406,6 +1411,7 @@ export function splitText(
     element.style.fontVariantLigatures = "none";
   }
 
+
   // Check once if we need to track nested inline elements (performance optimization)
   const trackAncestors = hasInlineDescendants(element);
 
@@ -1424,7 +1430,7 @@ export function splitText(
     splitChars,
     splitWords,
     splitLines,
-    { propIndex, mask, ariaHidden: !trackAncestors }
+    { propIndex, mask, ariaHidden: !trackAncestors, disableKerning }
   );
 
   // Store initial result
@@ -1541,7 +1547,7 @@ export function splitText(
             splitChars,
             splitWords,
             splitLines,
-            { propIndex, mask, ariaHidden: !trackAncestors }
+            { propIndex, mask, ariaHidden: !trackAncestors, disableKerning }
           );
 
           // Update current result
