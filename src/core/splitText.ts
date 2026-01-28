@@ -1050,7 +1050,6 @@ function performSplit(
         // Measure the full cross-word kerning: "lastChar + space + firstChar"
         // Total kerning = width("X Y") - width("X") - width(" ") - width("Y")
         const styles = getComputedStyle(firstCharSpan);
-        const sequence = lastChar + " " + firstChar;
         const kerningMap = measureKerning(element, firstCharSpan, [lastChar, " ", firstChar], styles);
 
         // kerningMap will have kerning at index 1 (space) and index 2 (firstChar)
@@ -1063,6 +1062,38 @@ function performSplit(
           const targetElement = options?.mask === "chars" && firstCharSpan.parentElement
             ? firstCharSpan.parentElement
             : firstCharSpan;
+          targetElement.style.marginLeft = `${totalKerning}px`;
+        }
+      }
+    } else if (splitWords && allWords.length > 1) {
+      // Cross-word kerning for word-only splitting (no char spans)
+      // Apply margin to the word span itself
+      for (let wordIdx = 1; wordIdx < allWords.length; wordIdx++) {
+        if (noSpaceBeforeSet.has(allWords[wordIdx])) continue;
+
+        const prevWord = allWords[wordIdx - 1];
+        const currWord = allWords[wordIdx];
+
+        const prevText = prevWord.textContent || '';
+        const currText = currWord.textContent || '';
+        if (!prevText || !currText) continue;
+
+        // Get last char of previous word and first char of current word
+        const lastChar = prevText[prevText.length - 1];
+        const firstChar = currText[0];
+
+        // Measure the full cross-word kerning
+        const styles = getComputedStyle(currWord);
+        const kerningMap = measureKerning(element, currWord, [lastChar, " ", firstChar], styles);
+
+        let totalKerning = 0;
+        if (kerningMap.has(1)) totalKerning += kerningMap.get(1)!;
+        if (kerningMap.has(2)) totalKerning += kerningMap.get(2)!;
+
+        if (Math.abs(totalKerning) > 0.01 && Math.abs(totalKerning) < 20) {
+          const targetElement = options?.mask === "words" && currWord.parentElement
+            ? currWord.parentElement
+            : currWord;
           targetElement.style.marginLeft = `${totalKerning}px`;
         }
       }
