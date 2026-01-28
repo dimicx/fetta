@@ -629,6 +629,8 @@ function collectTextStructure(
       // Whitespace = word boundary (with space before next word)
       if (grapheme === " " || grapheme === "\n" || grapheme === "\t") {
         pushWord();
+        // Reset noSpaceBeforeNext - explicit space overrides dash continuation
+        noSpaceBeforeNext = false;
         continue;
       }
 
