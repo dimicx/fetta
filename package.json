@@ -1,6 +1,6 @@
 {
   "name": "fetta",
-  "version": "1.3.5",
+  "version": "1.4.0",
   "description": "Text splitting library with kerning compensation for animations",
   "type": "module",
   "sideEffects": false,
