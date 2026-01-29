@@ -54,7 +54,30 @@ export interface SplitTextOptions {
    * Kerning is naturally lost when splitting into inline-block spans.
    * Use this if you prefer no compensation over imperfect Safari compensation. */
   disableKerning?: boolean;
+  /** Apply initial inline styles to elements after split (and after kerning compensation).
+   * Can be a static style object or a function that receives (element, index). */
+  initialStyles?: {
+    chars?: InitialStyle;
+    words?: InitialStyle;
+    lines?: InitialStyle;
+  };
+  /** Apply initial classes to elements after split (and after kerning compensation).
+   * Classes are added via classList.add() and support space-separated class names. */
+  initialClasses?: {
+    chars?: string;
+    words?: string;
+    lines?: string;
+  };
 }
+
+/** Style value for initialStyles - a partial CSSStyleDeclaration object */
+type InitialStyleValue = Partial<CSSStyleDeclaration>;
+
+/** Function that returns styles based on element and index */
+type InitialStyleFn = (element: HTMLElement, index: number) => InitialStyleValue;
+
+/** Initial style can be a static object or a function */
+type InitialStyle = InitialStyleValue | InitialStyleFn;
 
 /**
  * Result returned by splitText containing arrays of split elements and a revert function.
@@ -717,6 +740,53 @@ function createMaskWrapper(
   return wrapper;
 }
 
+// Styles that should NOT be overridden (internal layout)
+const PROTECTED_STYLES = new Set([
+  'display',
+  'position',
+  'textDecoration',
+  'fontVariantLigatures',
+]);
+
+/**
+ * Apply initial styles to elements after split.
+ * Protects internal layout styles from being overridden.
+ */
+function applyInitialStyles(
+  elements: HTMLElement[],
+  style: InitialStyle
+): void {
+  if (!style || elements.length === 0) return;
+
+  const isFn = typeof style === 'function';
+
+  for (let i = 0; i < elements.length; i++) {
+    const el = elements[i];
+    const styles = isFn ? style(el, i) : style;
+
+    for (const [key, value] of Object.entries(styles)) {
+      if (!PROTECTED_STYLES.has(key) && value !== undefined) {
+        (el.style as unknown as Record<string, unknown>)[key] = value;
+      }
+    }
+  }
+}
+
+/**
+ * Apply initial classes to elements after split.
+ * Supports space-separated class names.
+ */
+function applyInitialClasses(
+  elements: HTMLElement[],
+  className: string
+): void {
+  if (!className || elements.length === 0) return;
+  const classes = className.split(/\s+/).filter(Boolean);
+  for (const el of elements) {
+    el.classList.add(...classes);
+  }
+}
+
 /**
  * Group elements into lines based on their Y position.
  * Generic function that works with any element type (word spans, char spans, or text nodes).
@@ -771,7 +841,14 @@ function performSplit(
   splitChars: boolean,
   splitWords: boolean,
   splitLines: boolean,
-  options?: { propIndex?: boolean; mask?: "lines" | "words" | "chars"; ariaHidden?: boolean; disableKerning?: boolean }
+  options?: {
+    propIndex?: boolean;
+    mask?: "lines" | "words" | "chars";
+    ariaHidden?: boolean;
+    disableKerning?: boolean;
+    initialStyles?: SplitTextOptions['initialStyles'];
+    initialClasses?: SplitTextOptions['initialClasses'];
+  }
 ): {
   chars: HTMLSpanElement[];
   words: HTMLSpanElement[];
@@ -1216,12 +1293,42 @@ function performSplit(
         }
       });
 
+      // Apply initial styles after kerning, before returning
+      if (options?.initialStyles) {
+        const { chars, words, lines } = options.initialStyles;
+        if (chars) applyInitialStyles(allChars, chars);
+        if (words) applyInitialStyles(allWords, words);
+        if (lines) applyInitialStyles(allLines, lines);
+      }
+
+      // Apply initial classes
+      if (options?.initialClasses) {
+        const { chars, words, lines } = options.initialClasses;
+        if (chars) applyInitialClasses(allChars, chars);
+        if (words) applyInitialClasses(allWords, words);
+        if (lines) applyInitialClasses(allLines, lines);
+      }
+
       // Return only what user requested (words might have been created internally for spacing)
       return {
         chars: allChars,
         words: splitWords ? allWords : [],
         lines: allLines,
       };
+    }
+
+    // Apply initial styles after kerning, before returning
+    if (options?.initialStyles) {
+      const { chars, words } = options.initialStyles;
+      if (chars) applyInitialStyles(allChars, chars);
+      if (words) applyInitialStyles(allWords, words);
+    }
+
+    // Apply initial classes
+    if (options?.initialClasses) {
+      const { chars, words } = options.initialClasses;
+      if (chars) applyInitialClasses(allChars, chars);
+      if (words) applyInitialClasses(allWords, words);
     }
 
     // Return only what user requested (words might have been created internally for spacing)
@@ -1305,6 +1412,16 @@ function performSplit(
           }
         });
 
+      // Apply initial styles for lines only
+      if (options?.initialStyles?.lines) {
+        applyInitialStyles(allLines, options.initialStyles.lines);
+      }
+
+      // Apply initial classes for lines only
+      if (options?.initialClasses?.lines) {
+        applyInitialClasses(allLines, options.initialClasses.lines);
+      }
+
       return { chars: [], words: [], lines: allLines };
     } else {
       // Just text - nothing to split
@@ -1381,6 +1498,8 @@ export function splitText(
     revertOnComplete = false,
     propIndex = false,
     disableKerning = false,
+    initialStyles,
+    initialClasses,
   }: SplitTextOptions = {}
 ): SplitTextResult {
   // Validation
@@ -1455,7 +1574,7 @@ export function splitText(
     splitChars,
     splitWords,
     splitLines,
-    { propIndex, mask, ariaHidden: !trackAncestors, disableKerning }
+    { propIndex, mask, ariaHidden: !trackAncestors, disableKerning, initialStyles, initialClasses }
   );
 
   // Store initial result
@@ -1572,7 +1691,7 @@ export function splitText(
             splitChars,
             splitWords,
             splitLines,
-            { propIndex, mask, ariaHidden: !trackAncestors, disableKerning }
+            { propIndex, mask, ariaHidden: !trackAncestors, disableKerning, initialStyles, initialClasses }
           );
 
           // Update current result

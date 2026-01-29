@@ -11,6 +11,66 @@ import {
   useState,
 } from "react";
 
+/** Style value for initialStyles - a partial CSSStyleDeclaration object */
+type InitialStyleValue = Partial<CSSStyleDeclaration>;
+
+/** Function that returns styles based on element and index */
+type InitialStyleFn = (element: HTMLElement, index: number) => InitialStyleValue;
+
+/** Initial style can be a static object or a function */
+type InitialStyle = InitialStyleValue | InitialStyleFn;
+
+/** Initial styles configuration for chars, words, and/or lines */
+interface InitialStyles {
+  chars?: InitialStyle;
+  words?: InitialStyle;
+  lines?: InitialStyle;
+}
+
+/** Initial classes configuration for chars, words, and/or lines */
+interface InitialClasses {
+  chars?: string;
+  words?: string;
+  lines?: string;
+}
+
+/**
+ * Re-apply initial styles to elements.
+ */
+function reapplyInitialStyles(
+  elements: HTMLElement[],
+  style: InitialStyle | undefined
+): void {
+  if (!style || elements.length === 0) return;
+
+  const isFn = typeof style === 'function';
+
+  for (let i = 0; i < elements.length; i++) {
+    const el = elements[i];
+    const styles = isFn ? style(el, i) : style;
+
+    for (const [key, value] of Object.entries(styles)) {
+      if (value !== undefined) {
+        (el.style as unknown as Record<string, unknown>)[key] = value;
+      }
+    }
+  }
+}
+
+/**
+ * Re-apply initial classes to elements.
+ */
+function reapplyInitialClasses(
+  elements: HTMLElement[],
+  className: string | undefined
+): void {
+  if (!className || elements.length === 0) return;
+  const classes = className.split(/\s+/).filter(Boolean);
+  for (const el of elements) {
+    el.classList.add(...classes);
+  }
+}
+
 interface SplitTextOptions {
   type?:
     | "chars"
@@ -91,6 +151,15 @@ interface SplitTextProps {
   onInView?: (result: SplitTextElements) => CallbackReturn;
   /** Called when element leaves viewport */
   onLeaveView?: (result: SplitTextElements) => CallbackReturn;
+  /** Apply initial inline styles to elements after split (and after kerning compensation).
+   * Can be a static style object or a function that receives (element, index). */
+  initialStyles?: InitialStyles;
+  /** Apply initial classes to elements after split (and after kerning compensation).
+   * Classes are added via classList.add() and support space-separated class names. */
+  initialClasses?: InitialClasses;
+  /** Re-apply initialStyles and initialClasses when element leaves viewport.
+   * Useful for scroll-triggered animations that should reset when scrolling away. */
+  resetOnLeave?: boolean;
 }
 
 /**
@@ -161,6 +230,9 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
       inView,
       onInView,
       onLeaveView,
+      initialStyles,
+      initialClasses,
+      resetOnLeave = false,
     },
     forwardedRef
   ) {
@@ -189,6 +261,9 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
   const inViewRef = useRef(inView);
   const onInViewRef = useRef(onInView);
   const onLeaveViewRef = useRef(onLeaveView);
+  const initialStylesRef = useRef(initialStyles);
+  const initialClassesRef = useRef(initialClasses);
+  const resetOnLeaveRef = useRef(resetOnLeave);
 
   useLayoutEffect(() => {
     onSplitRef.current = onSplit;
@@ -198,6 +273,9 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
     inViewRef.current = inView;
     onInViewRef.current = onInView;
     onLeaveViewRef.current = onLeaveView;
+    initialStylesRef.current = initialStyles;
+    initialClassesRef.current = initialClasses;
+    resetOnLeaveRef.current = resetOnLeave;
   });
 
   // Refs for tracking state
@@ -228,6 +306,8 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
         ...optionsRef.current,
         autoSplit,
         revertOnComplete: revertOnCompleteRef.current,
+        initialStyles: initialStylesRef.current,
+        initialClasses: initialClassesRef.current,
         onResize: (resizeResult) => {
           // Update stored result with new elements but same revert
           const newSplitTextElements: SplitTextElements = {
@@ -357,8 +437,30 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
             console.warn("[fetta] Animation rejected, text not reverted");
           });
       }
-    } else if (!isInView && onLeaveViewRef.current && splitResultRef.current) {
-      onLeaveViewRef.current(splitResultRef.current);
+    } else if (!isInView && splitResultRef.current) {
+      // Re-apply initial styles/classes when leaving viewport
+      if (resetOnLeaveRef.current) {
+        const { chars, words, lines } = splitResultRef.current;
+        const styles = initialStylesRef.current;
+        const classes = initialClassesRef.current;
+
+        if (styles) {
+          reapplyInitialStyles(chars, styles.chars);
+          reapplyInitialStyles(words, styles.words);
+          reapplyInitialStyles(lines, styles.lines);
+        }
+
+        if (classes) {
+          reapplyInitialClasses(chars, classes.chars);
+          reapplyInitialClasses(words, classes.words);
+          reapplyInitialClasses(lines, classes.lines);
+        }
+      }
+
+      // Call onLeaveView callback if provided
+      if (onLeaveViewRef.current) {
+        onLeaveViewRef.current(splitResultRef.current);
+      }
     }
   }, [isInView]);
 

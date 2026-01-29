@@ -86,6 +86,8 @@ const result = splitText(element, options);
 | `revertOnComplete` | `boolean` | `false` | Auto-revert when animation completes |
 | `propIndex` | `boolean` | `false` | Add CSS custom properties: `--char-index`, `--word-index`, `--line-index` |
 | `disableKerning` | `boolean` | `false` | Skip kerning compensation (no margin adjustments) |
+| `initialStyles` | `object` | — | Apply initial inline styles to chars/words/lines after split |
+| `initialClasses` | `object` | — | Apply initial CSS classes to chars/words/lines after split |
 
 #### Return Value
 
@@ -117,6 +119,9 @@ import { SplitText } from 'fetta/react';
 | `inView` | `boolean \| InViewOptions` | `false` | Enable viewport detection |
 | `onInView` | `function` | — | Called when element enters viewport |
 | `onLeaveView` | `function` | — | Called when element leaves viewport |
+| `initialStyles` | `object` | — | Apply initial inline styles to chars/words/lines |
+| `initialClasses` | `object` | — | Apply initial CSS classes to chars/words/lines |
+| `resetOnLeave` | `boolean` | `false` | Re-apply initialStyles/initialClasses when leaving viewport |
 
 #### InView Options
 
@@ -147,13 +152,15 @@ import { SplitText } from 'fetta/react';
 
 ```tsx
 <SplitText
-  onSplit={({ words }) => {
-    words.forEach(w => (w.style.opacity = '0'));
+  options={{ type: 'words' }}
+  initialStyles={{
+    words: { opacity: '0', transform: 'translateY(20px)' }
   }}
-  inView={{ amount: 0.5, once: true }}
+  inView={{ amount: 0.5 }}
   onInView={({ words }) => {
-    animate(words, { opacity: 1, y: [20, 0] }, { delay: stagger(0.03) });
+    animate(words, { opacity: 1, y: 0 }, { delay: stagger(0.03) });
   }}
+  resetOnLeave
 >
   <p>Animates when scrolled into view</p>
 </SplitText>
