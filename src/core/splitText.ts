@@ -303,7 +303,7 @@ function measureKerningCanvas(
     const pairWidth = ctx.measureText(char1 + char2).width;
     const kerning = pairWidth - charWidths.get(char1)! - charWidths.get(char2)!;
 
-    if (Math.abs(kerning) > 0.01) {
+    if (Math.abs(kerning) > 0.001) {
       kerningMap.set(i + 1, kerning);
     }
   }
@@ -367,7 +367,7 @@ function measureKerningDOM(
     const pairWidth = measurer.getBoundingClientRect().width;
     const kerning = pairWidth - charWidths.get(char1)! - charWidths.get(char2)!;
 
-    if (Math.abs(kerning) > 0.01) {
+    if (Math.abs(kerning) > 0.001) {
       kerningMap.set(i + 1, kerning);
     }
   }
@@ -1161,7 +1161,7 @@ function performSplit(
         if (kerningMap.has(1)) totalKerning += kerningMap.get(1)!;
         if (kerningMap.has(2)) totalKerning += kerningMap.get(2)!;
 
-        if (Math.abs(totalKerning) > 0.01 && Math.abs(totalKerning) < 20) {
+        if (Math.abs(totalKerning) > 0.001 && Math.abs(totalKerning) < 20) {
           const targetElement = options?.mask === "chars" && firstCharSpan.parentElement
             ? firstCharSpan.parentElement
             : firstCharSpan;
@@ -1196,7 +1196,7 @@ function performSplit(
         if (kerningMap.has(1)) totalKerning += kerningMap.get(1)!;
         if (kerningMap.has(2)) totalKerning += kerningMap.get(2)!;
 
-        if (Math.abs(totalKerning) > 0.01 && Math.abs(totalKerning) < 20) {
+        if (Math.abs(totalKerning) > 0.001 && Math.abs(totalKerning) < 20) {
           const targetElement = options?.mask === "words" && currWord.parentElement
             ? currWord.parentElement
             : currWord;
