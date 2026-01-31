@@ -4,6 +4,15 @@
  * applies margin compensation, and detects lines based on rendered positions.
  */
 
+// Tags whose implicit ARIA role allows aria-label (headings, landmarks, interactive elements).
+// Other elements (span, div, p, etc.) use a sr-only copy instead.
+const ARIA_LABEL_ALLOWED_TAGS = new Set([
+  "h1", "h2", "h3", "h4", "h5", "h6",
+  "a", "button", "img", "input", "select", "textarea",
+  "table", "figure", "form", "fieldset", "dialog", "details",
+  "section", "article", "nav", "aside", "header", "footer", "main",
+]);
+
 /**
  * Configuration options for the splitText function.
  *
@@ -1548,6 +1557,7 @@ export function splitText(
   let currentChars: HTMLSpanElement[] = [];
   let currentWords: HTMLSpanElement[] = [];
   let currentLines: HTMLSpanElement[] = [];
+  let originalAriaLabel: string | null = null;
 
   // If splitting chars, force disable ligatures for consistency
   // Ligatures can't span multiple char elements anyway
@@ -1563,8 +1573,9 @@ export function splitText(
   const measuredWords = collectTextStructure(element, trackAncestors);
 
   // Perform the split
-  // For simple text, add aria-hidden to each span (GSAP-style approach)
-  // For nested elements, we'll wrap in a container instead
+  // aria-hidden on individual spans only when using aria-label (elements that support it)
+  // Otherwise, a visual wrapper handles aria-hidden for the whole group
+  const useAriaLabel = !trackAncestors && ARIA_LABEL_ALLOWED_TAGS.has(element.tagName.toLowerCase());
   const { chars, words, lines } = performSplit(
     element,
     measuredWords,
@@ -1574,7 +1585,7 @@ export function splitText(
     splitChars,
     splitWords,
     splitLines,
-    { propIndex, mask, ariaHidden: !trackAncestors, disableKerning, initialStyles, initialClasses }
+    { propIndex, mask, ariaHidden: useAriaLabel, disableKerning, initialStyles, initialClasses }
   );
 
   // Store initial result
@@ -1596,9 +1607,27 @@ export function splitText(
     }
     element.appendChild(visualWrapper);
     element.appendChild(createScreenReaderCopy(originalHTML));
+  } else if (useAriaLabel) {
+    // Headings, landmarks, etc. support aria-label natively
+    // Preserve any author-provided aria-label
+    originalAriaLabel = element.getAttribute("aria-label");
+    if (originalAriaLabel === null) {
+      element.setAttribute("aria-label", text);
+    }
   } else {
-    // Simple text: aria-hidden on each span + aria-label on parent
-    element.setAttribute("aria-label", text);
+    // Generic elements (span, div, p, etc.) don't allow aria-label,
+    // so use the same sr-only copy approach as nested elements
+    injectSrOnlyStyles();
+
+    const visualWrapper = document.createElement('span');
+    visualWrapper.setAttribute('aria-hidden', 'true');
+    visualWrapper.dataset.fettaVisual = 'true';
+
+    while (element.firstChild) {
+      visualWrapper.appendChild(element.firstChild);
+    }
+    element.appendChild(visualWrapper);
+    element.appendChild(createScreenReaderCopy(originalHTML));
   }
 
   // Cleanup function to disconnect observers and timers
@@ -1627,9 +1656,13 @@ export function splitText(
     element.innerHTML = originalHTML;
 
     // aria-hidden wrapper and sr-copy are removed by innerHTML reset
-    // Only remove aria-label for simple text case (it wasn't set for nested elements)
-    if (!trackAncestors) {
-      element.removeAttribute("aria-label");
+    // Restore original aria-label state for supported elements
+    if (useAriaLabel) {
+      if (originalAriaLabel !== null) {
+        element.setAttribute("aria-label", originalAriaLabel);
+      } else {
+        element.removeAttribute("aria-label");
+      }
     }
 
     // Keep ligatures disabled if we split chars (prevents visual shift on revert)
@@ -1691,7 +1724,7 @@ export function splitText(
             splitChars,
             splitWords,
             splitLines,
-            { propIndex, mask, ariaHidden: !trackAncestors, disableKerning, initialStyles, initialClasses }
+            { propIndex, mask, ariaHidden: useAriaLabel, disableKerning, initialStyles, initialClasses }
           );
 
           // Update current result
@@ -1699,8 +1732,8 @@ export function splitText(
           currentWords = result.words;
           currentLines = result.lines;
 
-          // Re-apply accessibility structure for nested elements only
-          if (trackAncestors) {
+          // Re-apply accessibility structure
+          if (trackAncestors || !useAriaLabel) {
             const visualWrapper = document.createElement('span');
             visualWrapper.setAttribute('aria-hidden', 'true');
             visualWrapper.dataset.fettaVisual = 'true';

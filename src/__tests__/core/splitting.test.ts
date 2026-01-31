@@ -114,7 +114,7 @@ describe("splitText", () => {
 
   describe("dash handling", () => {
     it("splits at em-dash and marks continuation with noSpaceBefore", () => {
-      const element = document.createElement("p");
+      const element = document.createElement("h1");
       element.textContent = "word—continuation";
       container.appendChild(element);
 
@@ -209,7 +209,7 @@ describe("splitText", () => {
     });
 
     it("removes aria-label on revert", () => {
-      const element = document.createElement("p");
+      const element = document.createElement("h1");
       element.textContent = "Hello";
       container.appendChild(element);
 
@@ -220,6 +220,67 @@ describe("splitText", () => {
       result.revert();
 
       expect(element.getAttribute("aria-label")).toBeNull();
+    });
+
+    it("sets aria-label when absent on supported elements", () => {
+      const element = document.createElement("h2");
+      element.textContent = "Hello";
+      container.appendChild(element);
+
+      splitText(element);
+
+      expect(element.getAttribute("aria-label")).toBe("Hello");
+    });
+
+    it("preserves pre-existing aria-label through split and revert", () => {
+      const element = document.createElement("h1");
+      element.textContent = "Hello";
+      element.setAttribute("aria-label", "Custom label");
+      container.appendChild(element);
+
+      const result = splitText(element);
+
+      // Should not overwrite author-provided aria-label
+      expect(element.getAttribute("aria-label")).toBe("Custom label");
+
+      result.revert();
+
+      expect(element.getAttribute("aria-label")).toBe("Custom label");
+    });
+
+    it("does not set aria-label for generic elements", () => {
+      const element = document.createElement("div");
+      element.textContent = "Hello";
+      container.appendChild(element);
+
+      splitText(element);
+
+      expect(element.hasAttribute("aria-label")).toBe(false);
+    });
+
+    it("preserves aria-label for nested content elements", () => {
+      const element = document.createElement("button");
+      element.setAttribute("aria-label", "Custom label");
+      element.innerHTML = "<span>Hello</span><span>World</span>";
+      container.appendChild(element);
+
+      const result = splitText(element);
+
+      expect(element.getAttribute("aria-label")).toBe("Custom label");
+
+      result.revert();
+
+      expect(element.getAttribute("aria-label")).toBe("Custom label");
+    });
+
+    it("does not add aria-label for nested content elements without one", () => {
+      const element = document.createElement("button");
+      element.innerHTML = "<span>Hello</span><span>World</span>";
+      container.appendChild(element);
+
+      splitText(element);
+
+      expect(element.hasAttribute("aria-label")).toBe(false);
     });
 
     it("keeps ligatures disabled after revert when chars were split", () => {
@@ -334,13 +395,14 @@ describe("splitText", () => {
   });
 
   describe("accessibility", () => {
-    it("adds aria-label and aria-hidden on each span for simple text", () => {
-      const element = document.createElement("p");
+    it("adds aria-label and aria-hidden on each span for simple text in heading", () => {
+      const element = document.createElement("h1");
       element.textContent = "Hello World";
       container.appendChild(element);
 
       const result = splitText(element, { type: "words" });
 
+      // Headings support aria-label natively
       expect(element.getAttribute("aria-label")).toBe("Hello World");
 
       // Each word span should have aria-hidden (no wrapper needed)
@@ -348,13 +410,32 @@ describe("splitText", () => {
         expect(word.getAttribute("aria-hidden")).toBe("true");
       });
 
-      // No visual wrapper for simple text
+      // No visual wrapper for heading with simple text
       const visualWrapper = element.querySelector('[data-fetta-visual="true"]');
       expect(visualWrapper).toBeNull();
 
-      // No sr-only copy for simple text (aria-label is sufficient)
+      // No sr-only copy for heading with simple text (aria-label is sufficient)
       const srCopy = element.querySelector('[data-fetta-sr-copy="true"]');
       expect(srCopy).toBeNull();
+    });
+
+    it("uses sr-only copy for simple text in generic elements", () => {
+      const element = document.createElement("span");
+      element.textContent = "Hello World";
+      container.appendChild(element);
+
+      splitText(element, { type: "words" });
+
+      // Generic elements don't support aria-label, so use sr-only approach
+      expect(element.getAttribute("aria-label")).toBeNull();
+
+      const visualWrapper = element.querySelector('[data-fetta-visual="true"]');
+      expect(visualWrapper).not.toBeNull();
+      expect(visualWrapper?.getAttribute("aria-hidden")).toBe("true");
+
+      const srCopy = element.querySelector('[data-fetta-sr-copy="true"]');
+      expect(srCopy).not.toBeNull();
+      expect(srCopy?.textContent).toBe("Hello World");
     });
 
     it("uses aria-hidden + sr-only for nested elements", () => {
@@ -398,8 +479,8 @@ describe("splitText", () => {
       expect(srStrong).not.toBeNull();
     });
 
-    it("removes aria-label on revert for simple text", () => {
-      const element = document.createElement("p");
+    it("removes aria-label on revert for simple text in heading", () => {
+      const element = document.createElement("h1");
       element.textContent = "Hello";
       container.appendChild(element);
 
@@ -410,6 +491,21 @@ describe("splitText", () => {
       result.revert();
 
       expect(element.getAttribute("aria-label")).toBeNull();
+    });
+
+    it("removes sr-only copy on revert for simple text in generic element", () => {
+      const element = document.createElement("span");
+      element.textContent = "Hello";
+      container.appendChild(element);
+
+      const result = splitText(element);
+
+      expect(element.querySelector('[data-fetta-sr-copy="true"]')).not.toBeNull();
+
+      result.revert();
+
+      expect(element.querySelector('[data-fetta-sr-copy="true"]')).toBeNull();
+      expect(element.textContent).toBe("Hello");
     });
 
     it("removes visual wrapper and sr-copy on revert for nested elements", () => {

@@ -114,6 +114,16 @@ Object.defineProperty(document, "fonts", {
   writable: true,
 });
 
+// Mock Canvas API used for kerning measurements in jsdom
+if (typeof HTMLCanvasElement !== "undefined") {
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockImplementation(() => {
+    return {
+      font: "",
+      measureText: (text: string) => ({ width: text.length * 10 }),
+    } as CanvasRenderingContext2D;
+  });
+}
+
 // Mock Range API for getBoundingClientRect
 const originalCreateRange = document.createRange.bind(document);
 
