@@ -6,11 +6,11 @@ Split text into characters, words, and lines while preserving the original typog
 
 ## Features
 
-- **Kerning Compensation** — Measures kerning between character pairs, applies margin adjustments to maintain original spacing
-- **Nested Elements** — Preserves inline HTML elements (`<a>`, `<em>`, `<strong>`, etc.) with all attributes intact
-- **Line Detection** — Detects lines based on Y-position clustering, works with any container width
-- **Dash Handling** — Allows text to wrap naturally after em-dashes, en-dashes, and hyphens
-- **Auto Re-split** — Automatically re-splits on container resize with debouncing
+- **Kerning Compensation** — Maintains original character spacing when splitting by chars
+- **Nested Elements** — Preserves `<a>`, `<em>`, `<strong>` and other inline elements with all attributes
+- **Line Detection** — Automatically groups words into lines
+- **Dash Handling** — Allows text to wrap naturally after em-dashes, en-dashes, hyphens, and slashes
+- **Auto Re-split** — Re-splits on container resize
 - **Auto-Revert** — Restore original HTML after animations
 - **Masking** — Wrap elements in clip containers for reveal animations
 - **Emoji Support** — Properly handles compound emojis and complex Unicode characters
@@ -25,6 +25,8 @@ Split text into characters, words, and lines while preserving the original typog
 ```bash
 npm install fetta
 ```
+
+**Bundle size**: ~3.9 kB (`fetta/core`) / ~4.8 kB (`fetta/react`) — minified + compressed
 
 ## Quick Start
 
@@ -79,15 +81,15 @@ const result = splitText(element, options);
 | `charClass` | `string` | `"split-char"` | CSS class for character elements |
 | `wordClass` | `string` | `"split-word"` | CSS class for word elements |
 | `lineClass` | `string` | `"split-line"` | CSS class for line elements |
-| `mask` | `"lines" \| "words" \| "chars"` | — | Wraps elements in `overflow: clip` container for reveal animations |
+| `mask` | `string` | — | Wrap elements in `overflow: clip` container: `"chars"`, `"words"`, or `"lines"` |
 | `autoSplit` | `boolean` | `false` | Re-split on container resize |
 | `onResize` | `function` | — | Callback after resize re-split |
 | `onSplit` | `function` | — | Callback after initial split |
 | `revertOnComplete` | `boolean` | `false` | Auto-revert when animation completes |
 | `propIndex` | `boolean` | `false` | Add CSS custom properties: `--char-index`, `--word-index`, `--line-index` |
 | `disableKerning` | `boolean` | `false` | Skip kerning compensation (no margin adjustments) |
-| `initialStyles` | `object` | — | Apply initial inline styles to chars/words/lines after split |
-| `initialClasses` | `object` | — | Apply initial CSS classes to chars/words/lines after split |
+| `initialStyles` | `object` | — | Apply initial inline styles to chars/words/lines after split. Values can be objects or `(el, index) => object` functions |
+| `initialClasses` | `object` | — | Apply initial CSS classes to chars/words/lines after split. Values can be strings or `(el, index) => string` functions |
 
 #### Return Value
 
@@ -110,18 +112,35 @@ import { SplitText } from 'fetta/react';
 
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
-| `children` | `ReactElement` | — | Single element to split |
-| `onSplit` | `function` | — | Called after text is split |
-| `onResize` | `function` | — | Called on autoSplit re-split |
-| `options` | `object` | — | Split options (type, classes, mask, propIndex, disableKerning) |
+| `children` | `ReactElement` | — | Single React element to split |
+| `as` | `keyof JSX.IntrinsicElements` | `"div"` | Wrapper element type |
+| `className` | `string` | — | Class name for wrapper element |
+| `style` | `CSSProperties` | — | Additional styles for wrapper element |
+| `ref` | `Ref<HTMLElement>` | — | Ref to container element |
+| `onSplit` | `(result) => void` | — | Called after text is split |
+| `onResize` | `(result) => void` | — | Called on autoSplit re-split |
+| `options` | `SplitOptions` | — | Split options (type, classes, mask, propIndex, disableKerning) |
 | `autoSplit` | `boolean` | `false` | Re-split on container resize |
 | `revertOnComplete` | `boolean` | `false` | Revert after animation completes |
 | `inView` | `boolean \| InViewOptions` | `false` | Enable viewport detection |
-| `onInView` | `function` | — | Called when element enters viewport |
-| `onLeaveView` | `function` | — | Called when element leaves viewport |
-| `initialStyles` | `object` | — | Apply initial inline styles to chars/words/lines |
-| `initialClasses` | `object` | — | Apply initial CSS classes to chars/words/lines |
+| `onInView` | `(result) => void` | — | Called when element enters viewport |
+| `onLeaveView` | `(result) => void` | — | Called when element leaves viewport |
+| `initialStyles` | `object` | — | Apply initial inline styles to chars/words/lines. Values can be objects or `(el, index) => object` functions |
+| `initialClasses` | `object` | — | Apply initial CSS classes to chars/words/lines. Values can be strings or `(el, index) => string` functions |
 | `resetOnLeave` | `boolean` | `false` | Re-apply initialStyles/initialClasses when leaving viewport |
+
+#### Callback Signature
+
+All callbacks (`onSplit`, `onResize`, `onInView`, `onLeaveView`) receive the same result object:
+
+```ts
+{
+  chars: HTMLSpanElement[];
+  words: HTMLSpanElement[];
+  lines: HTMLSpanElement[];
+  revert: () => void;
+}
+```
 
 #### InView Options
 
@@ -135,20 +154,96 @@ import { SplitText } from 'fetta/react';
 
 ## Examples
 
-### Masked Line Reveal
+### Vanilla JavaScript
+
+#### Basic
+
+```js
+import { splitText } from 'fetta';
+import { animate, stagger } from 'motion';
+
+const { words } = splitText(document.querySelector('h1'));
+
+animate(words, { opacity: [0, 1], y: [20, 0] }, { delay: stagger(0.05) });
+```
+
+#### Masked Line Reveal
+
+```js
+splitText(element, {
+  type: 'lines',
+  mask: 'lines',
+  onSplit: ({ lines }) => {
+    animate(lines, { y: ['100%', '0%'] }, { delay: stagger(0.1) });
+  }
+});
+```
+
+#### With GSAP
+
+```js
+import { splitText } from 'fetta';
+import gsap from 'gsap';
+
+splitText(element, {
+  revertOnComplete: true,
+  onSplit: ({ words }) => {
+    return gsap.from(words, {
+      opacity: 0,
+      y: 20,
+      stagger: 0.05,
+      duration: 0.6,
+    });
+  }
+});
+```
+
+#### CSS-Only with Index Props
+
+```js
+splitText(element, { type: 'chars', propIndex: true });
+```
+
+```css
+.split-char {
+  opacity: 0;
+  animation: fade-in 0.5s forwards;
+  animation-delay: calc(var(--char-index) * 0.03s);
+}
+
+@keyframes fade-in {
+  to { opacity: 1; }
+}
+```
+
+### React
+
+#### Basic
+
+```tsx
+<SplitText
+  onSplit={({ words }) => {
+    animate(words, { opacity: [0, 1], y: [20, 0] }, { delay: stagger(0.05) });
+  }}
+>
+  <h1>Hello World</h1>
+</SplitText>
+```
+
+#### Masked Line Reveal
 
 ```tsx
 <SplitText
   options={{ type: 'lines', mask: 'lines' }}
   onSplit={({ lines }) => {
-    animate(lines, { y: ['100%', 0] }, { delay: stagger(0.1) });
+    animate(lines, { y: ['100%', '0%'] }, { delay: stagger(0.1) });
   }}
 >
   <p>Each line reveals from below</p>
 </SplitText>
 ```
 
-### Scroll-Triggered Animation
+#### Scroll-Triggered with InView
 
 ```tsx
 <SplitText
@@ -166,7 +261,7 @@ import { SplitText } from 'fetta/react';
 </SplitText>
 ```
 
-### Auto-Revert After Animation
+#### Auto-Revert After Animation
 
 ```tsx
 <SplitText
@@ -176,73 +271,6 @@ import { SplitText } from 'fetta/react';
   }}
 >
   <h1>Reverts to original HTML after animation</h1>
-</SplitText>
-```
-
-### Responsive Re-split
-
-```tsx
-<SplitText
-  autoSplit
-  onSplit={({ lines }) => animateLines(lines)}
-  onResize={({ lines }) => animateLines(lines)}
->
-  <p>Re-animates when container resizes</p>
-</SplitText>
-```
-
-### CSS-Only Animation with Index Props
-
-```tsx
-<SplitText options={{ type: 'chars', propIndex: true }}>
-  <h1 className="stagger-fade">Hello</h1>
-</SplitText>
-```
-
-```css
-.stagger-fade .split-char {
-  opacity: 0;
-  animation: fade-in 0.5s forwards;
-  animation-delay: calc(var(--char-index) * 0.03s);
-}
-
-@keyframes fade-in {
-  to { opacity: 1; }
-}
-```
-
-### With GSAP
-
-```tsx
-import { SplitText } from 'fetta/react';
-import gsap from 'gsap';
-
-<SplitText
-  revertOnComplete
-  onSplit={({ words }) => {
-    return gsap.from(words, {
-      opacity: 0,
-      y: 20,
-      stagger: 0.05,
-      duration: 0.6,
-    });
-  }}
->
-  <h1>Works with GSAP</h1>
-</SplitText>
-```
-
-### Nested HTML Elements
-
-Fetta preserves inline elements like links, emphasis, and other formatting. Attributes (href, class, id, data-*, etc.) are maintained.
-
-```tsx
-<SplitText
-  onSplit={({ chars }) => {
-    animate(chars, { opacity: [0, 1] }, { delay: stagger(0.02) });
-  }}
->
-  <p>Click <a href="/signup">here</a> to <em>get started</em></p>
 </SplitText>
 ```
 
@@ -258,11 +286,52 @@ Default classes applied to split elements:
 
 Each element also receives a `data-index` attribute with its position.
 
+## Font Loading
+
+For accurate kerning measurements, fonts must be fully loaded before splitting. When using custom fonts in vanilla JS, wait for `document.fonts.ready`:
+
+```ts
+document.fonts.ready.then(() => {
+  const { words } = splitText(element);
+  animate(words, { opacity: [0, 1] });
+});
+```
+
+The React component handles this automatically — no additional setup required.
+
+## Accessibility
+
+Fetta automatically handles accessibility to ensure split text remains readable by screen readers.
+
+**Headings and landmarks** — For elements that support `aria-label` natively (headings, `<section>`, `<nav>`, etc.), Fetta adds `aria-hidden="true"` to each split span and an `aria-label` on the parent:
+
+```html
+<!-- After splitting <h1>Hello World</h1> -->
+<h1 aria-label="Hello World">
+  <span class="split-word" aria-hidden="true">Hello</span>
+  <span class="split-word" aria-hidden="true">World</span>
+</h1>
+```
+
+**Generic elements and nested content** — For `<span>`, `<div>`, `<p>`, or text containing inline elements like links, Fetta wraps the visual content with `aria-hidden="true"` and adds a screen-reader-only copy that preserves the semantic structure:
+
+```html
+<!-- After splitting <p>Click <a href="/signup">here</a> to start</p> -->
+<p>
+  <span aria-hidden="true" data-fetta-visual="true">
+    <!-- Split visual content -->
+  </span>
+  <span class="fetta-sr-only" data-fetta-sr-copy="true">
+    Click <a href="/signup">here</a> to start
+  </span>
+</p>
+```
+
+Pre-existing `aria-label` attributes are always preserved.
+
 ## Notes
 
-- **Fonts must be loaded** before splitting. The React component waits for `document.fonts.ready` automatically.
 - **Ligatures are disabled** (`font-variant-ligatures: none`) because ligatures cannot span multiple elements.
-- **Accessibility**: Automatic screen reader support for both simple text and text with nested elements like links.
 
 ## Browser Support
 
@@ -272,6 +341,8 @@ Requires:
 - `ResizeObserver`
 - `IntersectionObserver`
 - `Intl.Segmenter`
+
+**Safari note** — Kerning compensation works but may be slightly less accurate due to Safari's unique font rendering. Differences are typically imperceptible and vary by font, but if you're using `revert()` and notice a subtle shift in some characters, you can bypass compensation with `disableKerning: true`.
 
 ## License
 
