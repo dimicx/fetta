@@ -108,6 +108,12 @@ const result = splitText(element, options);
 import { SplitText } from 'fetta/react';
 ```
 
+For Motion variants:
+
+```tsx
+import { SplitText } from 'fetta/react-motion';
+```
+
 #### Props
 
 | Prop | Type | Default | Description |
