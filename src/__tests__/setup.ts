@@ -114,26 +114,18 @@ Object.defineProperty(document, "fonts", {
   writable: true,
 });
 
-// Mock Canvas API used for kerning measurements in jsdom
-if (typeof HTMLCanvasElement !== "undefined") {
-  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockImplementation(() => {
-    return {
-      font: "",
-      measureText: (text: string) => ({ width: text.length * 10 }),
-    } as CanvasRenderingContext2D;
-  });
-}
-
 // Mock Range API for getBoundingClientRect
 const originalCreateRange = document.createRange.bind(document);
 
 vi.spyOn(document, "createRange").mockImplementation(() => {
   const range = originalCreateRange();
 
-  // Mock getBoundingClientRect to return predictable positions
+  // Track the selected content for width calculation
+  let selectedText = "";
   let charIndex = 0;
   const originalSetStart = range.setStart.bind(range);
   const originalSetEnd = range.setEnd.bind(range);
+  const originalSelectNodeContents = range.selectNodeContents.bind(range);
 
   range.setStart = (node: Node, offset: number) => {
     charIndex = offset;
@@ -144,17 +136,31 @@ vi.spyOn(document, "createRange").mockImplementation(() => {
     return originalSetEnd(node, offset);
   };
 
-  range.getBoundingClientRect = () => ({
-    top: 0,
-    right: charIndex * 10 + 10,
-    bottom: 20,
-    left: charIndex * 10,
-    width: 10,
-    height: 20,
-    x: charIndex * 10,
-    y: 0,
-    toJSON: () => ({}),
-  });
+  range.selectNodeContents = (node: Node) => {
+    selectedText = node.textContent || "";
+    try {
+      return originalSelectNodeContents(node);
+    } catch {
+      // jsdom may throw if node is not in document; ignore
+    }
+  };
+
+  range.getBoundingClientRect = () => {
+    // When selectNodeContents was used, return width based on text length
+    // This matches the text.length * 10 pattern used by Element.getBoundingClientRect mock
+    const width = selectedText ? selectedText.length * 10 : 10;
+    return {
+      top: 0,
+      right: charIndex * 10 + width,
+      bottom: 20,
+      left: charIndex * 10,
+      width,
+      height: 20,
+      x: charIndex * 10,
+      y: 0,
+      toJSON: () => ({}),
+    };
+  };
 
   return range;
 });

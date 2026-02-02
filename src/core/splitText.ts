@@ -194,83 +194,10 @@ function copyKerningStyles(
   });
 }
 
-function buildCanvasFontString(styles: CSSStyleDeclaration): string {
-  // Keep this conservative: canvas font parsing varies, and unsupported
-  // tokens can invalidate the entire font string.
-  const fontStyle = styles.fontStyle || "normal";
-  const fontWeight = styles.fontWeight || "normal";
-  const fontSize = styles.fontSize || "16px";
-  const fontFamily = styles.fontFamily || "sans-serif";
-
-  return [fontStyle, fontWeight, fontSize, fontFamily].filter(Boolean).join(" ");
-}
-
-function applyKerningStylesToCanvas(
-  ctx: CanvasRenderingContext2D,
-  styles: CSSStyleDeclaration
-): void {
-  ctx.font = buildCanvasFontString(styles);
-
-  const ctxAny = ctx as CanvasRenderingContext2D & Record<string, unknown>;
-  const setIfExists = (prop: string, value: string) => {
-    if (!value || value === "normal") return;
-    if (prop in ctxAny) ctxAny[prop] = value;
-  };
-
-  setIfExists("fontKerning", styles.getPropertyValue("font-kerning"));
-  setIfExists("fontVariantLigatures", styles.getPropertyValue("font-variant-ligatures"));
-  setIfExists("fontFeatureSettings", styles.getPropertyValue("font-feature-settings"));
-  setIfExists("fontVariationSettings", styles.getPropertyValue("font-variation-settings"));
-  setIfExists("fontOpticalSizing", styles.getPropertyValue("font-optical-sizing"));
-  setIfExists("fontSizeAdjust", styles.getPropertyValue("font-size-adjust"));
-  setIfExists("fontStretch", styles.getPropertyValue("font-stretch"));
-  setIfExists("fontVariantCaps", styles.getPropertyValue("font-variant-caps"));
-  setIfExists("fontVariantNumeric", styles.getPropertyValue("font-variant-numeric"));
-  setIfExists("fontVariantEastAsian", styles.getPropertyValue("font-variant-east-asian"));
-  setIfExists("fontSynthesis", styles.getPropertyValue("font-synthesis"));
-  setIfExists("fontSynthesisWeight", styles.getPropertyValue("font-synthesis-weight"));
-  setIfExists("fontSynthesisStyle", styles.getPropertyValue("font-synthesis-style"));
-  setIfExists("letterSpacing", styles.getPropertyValue("letter-spacing"));
-  setIfExists("wordSpacing", styles.getPropertyValue("word-spacing"));
-  setIfExists("textRendering", styles.getPropertyValue("text-rendering"));
-  setIfExists("direction", styles.getPropertyValue("direction"));
-}
-
 function buildKerningStyleKey(styles: CSSStyleDeclaration): string {
   return KERNING_STYLE_PROPS.map((prop) => styles.getPropertyValue(prop)).join("|");
 }
 
-function shouldUseDomKerning(styles: CSSStyleDeclaration): boolean {
-  const textTransform = styles.getPropertyValue("text-transform");
-  if (textTransform && textTransform !== "none") return true;
-
-  const fontVariant = styles.getPropertyValue("font-variant");
-  if (fontVariant && fontVariant !== "normal") return true;
-
-  const fontStretch = styles.getPropertyValue("font-stretch");
-  if (fontStretch && fontStretch !== "normal" && fontStretch !== "100%") return true;
-
-  const fontFeatureSettings = styles.getPropertyValue("font-feature-settings");
-  if (fontFeatureSettings && fontFeatureSettings !== "normal") return true;
-
-  const fontVariationSettings = styles.getPropertyValue("font-variation-settings");
-  if (fontVariationSettings && fontVariationSettings !== "normal") return true;
-
-  const fontOpticalSizing = styles.getPropertyValue("font-optical-sizing");
-  if (fontOpticalSizing && fontOpticalSizing !== "auto") return true;
-
-  const fontSizeAdjust = styles.getPropertyValue("font-size-adjust");
-  if (fontSizeAdjust && fontSizeAdjust !== "none") return true;
-
-  return false;
-}
-
-/**
- * Measure kerning between character pairs using a DOM element.
- * Uses actual DOM rendering to capture all inherited styles including font-smoothing.
- * Kerning = pair width - char1 width - char2 width
- * Returns a Map of character index -> kerning adjustment (negative = tighten).
- */
 // Detect Safari browser (cached)
 let isSafariBrowser: boolean | null = null;
 function isSafari(): boolean {
@@ -281,49 +208,9 @@ function isSafari(): boolean {
 }
 
 /**
- * Measure kerning using Canvas API.
- * Fast but cannot inherit -webkit-font-smoothing (inaccurate in Safari with antialiased fonts).
- */
-function measureKerningCanvas(
-  styleSource: HTMLElement,
-  chars: string[],
-  styles?: CSSStyleDeclaration
-): Map<number, number> {
-  const kerningMap = new Map<number, number>();
-  if (chars.length < 2) return kerningMap;
-
-  const canvas = document.createElement('canvas');
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return kerningMap;
-
-  const computedStyles = styles ?? getComputedStyle(styleSource);
-  applyKerningStylesToCanvas(ctx, computedStyles);
-
-  // Measure unique chars first (deduplicated)
-  const charWidths = new Map<string, number>();
-  for (const char of new Set(chars)) {
-    charWidths.set(char, ctx.measureText(char).width);
-  }
-
-  // Measure pairs and calculate kerning
-  for (let i = 0; i < chars.length - 1; i++) {
-    const char1 = chars[i];
-    const char2 = chars[i + 1];
-    const pairWidth = ctx.measureText(char1 + char2).width;
-    const kerning = pairWidth - charWidths.get(char1)! - charWidths.get(char2)!;
-
-    if (Math.abs(kerning) > 0.001) {
-      kerningMap.set(i + 1, kerning);
-    }
-  }
-
-  return kerningMap;
-}
-
-/**
  * Measure kerning using DOM elements.
  * Slower but accurate - inherits all styles including -webkit-font-smoothing.
- * Used for Safari where Canvas measurements don't match rendered text.
+ * Used for Safari where font-smoothing affects glyph metrics.
  */
 function measureKerningDOM(
   container: HTMLElement,
@@ -386,8 +273,60 @@ function measureKerningDOM(
 }
 
 /**
+ * Measure kerning using Range API on text nodes.
+ * Faster than DOM element measurement — avoids box model computation.
+ * Used for non-Safari browsers (Chrome, Firefox, Edge).
+ */
+function measureKerningRange(
+  container: HTMLElement,
+  styleSource: HTMLElement,
+  chars: string[],
+  styles?: CSSStyleDeclaration
+): Map<number, number> {
+  const kerningMap = new Map<number, number>();
+  if (chars.length < 2) return kerningMap;
+
+  const measurer = document.createElement('span');
+  measurer.style.cssText = 'position:absolute;visibility:hidden;white-space:pre;';
+
+  const computedStyles = styles ?? getComputedStyle(styleSource);
+  copyKerningStyles(measurer, computedStyles);
+  container.appendChild(measurer);
+
+  const range = document.createRange();
+  const measureWidth = (): number => {
+    const textNode = measurer.firstChild;
+    if (!textNode) return 0;
+    range.selectNodeContents(textNode);
+    return range.getBoundingClientRect().width;
+  };
+
+  // Measure unique chars first (deduplicated)
+  const charWidths = new Map<string, number>();
+  for (const char of new Set(chars)) {
+    measurer.textContent = char;
+    charWidths.set(char, measureWidth());
+  }
+
+  // Measure pairs and calculate kerning
+  for (let i = 0; i < chars.length - 1; i++) {
+    const char1 = chars[i];
+    const char2 = chars[i + 1];
+    measurer.textContent = char1 + char2;
+    const kerning = measureWidth() - charWidths.get(char1)! - charWidths.get(char2)!;
+    if (Math.abs(kerning) > 0.001) {
+      kerningMap.set(i + 1, kerning);
+    }
+  }
+
+  range.detach();
+  container.removeChild(measurer);
+  return kerningMap;
+}
+
+/**
  * Measure kerning between character pairs.
- * Uses Canvas API for speed in Chrome/Firefox/Edge.
+ * Uses Range API for speed in Chrome/Firefox/Edge.
  * Uses DOM measurement in Safari for accuracy with font-smoothing.
  */
 function measureKerning(
@@ -398,13 +337,17 @@ function measureKerning(
 ): Map<number, number> {
   if (chars.length < 2) return new Map();
 
+  if (!container.isConnected) {
+    console.warn('splitText: kerning measurement requires a connected DOM element. Skipping kerning.');
+    return new Map();
+  }
+
   const computedStyles = styles ?? getComputedStyle(styleSource);
 
   // Safari needs DOM-based measurement for font-smoothing accuracy.
-  // Use DOM when advanced font features are in play to avoid canvas parsing issues.
-  return isSafari() || shouldUseDomKerning(computedStyles)
+  return isSafari()
     ? measureKerningDOM(container, styleSource, chars, computedStyles)
-    : measureKerningCanvas(styleSource, chars, computedStyles);
+    : measureKerningRange(container, styleSource, chars, computedStyles);
 }
 
 // Track whether screen reader styles have been injected
