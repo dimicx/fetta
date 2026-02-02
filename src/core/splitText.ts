@@ -223,7 +223,10 @@ function applyKerningStylesToCanvas(
   setIfExists("fontVariationSettings", styles.getPropertyValue("font-variation-settings"));
   setIfExists("fontOpticalSizing", styles.getPropertyValue("font-optical-sizing"));
   setIfExists("fontSizeAdjust", styles.getPropertyValue("font-size-adjust"));
-  setIfExists("fontStretch", styles.getPropertyValue("font-stretch"));
+  // fontStretch intentionally omitted: non-normal values trigger DOM-based
+  // kerning (see shouldUseDomKerning), so the canvas path only sees "normal"
+  // or "100%" — both no-ops. Setting "100%" on canvas throws because the
+  // CanvasRenderingContext2D fontStretch property expects keyword enum values.
   setIfExists("fontVariantCaps", styles.getPropertyValue("font-variant-caps"));
   setIfExists("fontVariantNumeric", styles.getPropertyValue("font-variant-numeric"));
   setIfExists("fontVariantEastAsian", styles.getPropertyValue("font-variant-east-asian"));
