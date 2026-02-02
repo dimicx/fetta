@@ -127,7 +127,7 @@ import { SplitText } from 'fetta/react';
 | `onLeaveView` | `(result) => void` | — | Called when element leaves viewport |
 | `initialStyles` | `object` | — | Apply initial inline styles to chars/words/lines. Values can be objects or `(el, index) => object` functions |
 | `initialClasses` | `object` | — | Apply initial CSS classes to chars/words/lines. Values can be strings or `(el, index) => string` functions |
-| `resetOnLeave` | `boolean` | `false` | Re-apply initialStyles/initialClasses when leaving viewport |
+| `resetOnViewportLeave` | `boolean` | `false` | Re-apply initialStyles/initialClasses when leaving viewport |
 
 #### Callback Signature
 
@@ -255,7 +255,7 @@ splitText(element, { type: 'chars', propIndex: true });
   onInView={({ words }) => {
     animate(words, { opacity: 1, y: 0 }, { delay: stagger(0.03) });
   }}
-  resetOnLeave
+  resetOnViewportLeave
 >
   <p>Animates when scrolled into view</p>
 </SplitText>

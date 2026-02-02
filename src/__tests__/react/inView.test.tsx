@@ -7,7 +7,7 @@ import {
 } from "../setup";
 import React from "react";
 
-describe("SplitText inView", () => {
+describe("SplitText viewport", () => {
   beforeEach(() => {
     resetIntersectionObserver();
   });
@@ -16,9 +16,9 @@ describe("SplitText inView", () => {
     cleanup();
   });
 
-  it("sets up IntersectionObserver when inView is true", async () => {
+  it("sets up IntersectionObserver when viewport is provided", async () => {
     render(
-      <SplitText inView>
+      <SplitText viewport={{}}>
         <p>Hello World</p>
       </SplitText>
     );
@@ -31,7 +31,7 @@ describe("SplitText inView", () => {
 
   it("sets up IntersectionObserver with custom options", async () => {
     render(
-      <SplitText inView={{ amount: 0.5, margin: "100px" }}>
+      <SplitText viewport={{ amount: 0.5, margin: "100px" }}>
         <p>Hello World</p>
       </SplitText>
     );
@@ -45,11 +45,11 @@ describe("SplitText inView", () => {
     });
   });
 
-  it("calls onInView when element enters viewport", async () => {
-    const onInView = vi.fn();
+  it("calls onViewportEnter when element enters viewport", async () => {
+    const onViewportEnter = vi.fn();
 
     render(
-      <SplitText inView onInView={onInView}>
+      <SplitText viewport={{}} onViewportEnter={onViewportEnter}>
         <p>Hello World</p>
       </SplitText>
     );
@@ -72,7 +72,7 @@ describe("SplitText inView", () => {
     });
 
     await waitFor(() => {
-      expect(onInView).toHaveBeenCalledWith(
+      expect(onViewportEnter).toHaveBeenCalledWith(
         expect.objectContaining({
           chars: expect.any(Array),
           words: expect.any(Array),
@@ -83,11 +83,11 @@ describe("SplitText inView", () => {
     });
   });
 
-  it("calls onLeaveView when element exits viewport", async () => {
-    const onLeaveView = vi.fn();
+  it("calls onViewportLeave when element exits viewport", async () => {
+    const onViewportLeave = vi.fn();
 
     render(
-      <SplitText inView onLeaveView={onLeaveView}>
+      <SplitText viewport={{}} onViewportLeave={onViewportLeave}>
         <p>Hello World</p>
       </SplitText>
     );
@@ -120,15 +120,15 @@ describe("SplitText inView", () => {
     });
 
     await waitFor(() => {
-      expect(onLeaveView).toHaveBeenCalled();
+      expect(onViewportLeave).toHaveBeenCalled();
     });
   });
 
-  it("only triggers onInView once when once option is true", async () => {
-    const onInView = vi.fn();
+  it("only triggers onViewportEnter once when once option is true", async () => {
+    const onViewportEnter = vi.fn();
 
     render(
-      <SplitText inView={{ once: true }} onInView={onInView}>
+      <SplitText viewport={{ once: true }} onViewportEnter={onViewportEnter}>
         <p>Hello World</p>
       </SplitText>
     );
@@ -151,7 +151,7 @@ describe("SplitText inView", () => {
     });
 
     await waitFor(() => {
-      expect(onInView).toHaveBeenCalledTimes(1);
+      expect(onViewportEnter).toHaveBeenCalledTimes(1);
     });
 
     // Leave viewport
@@ -175,14 +175,14 @@ describe("SplitText inView", () => {
     });
 
     // Should still only be called once
-    expect(onInView).toHaveBeenCalledTimes(1);
+    expect(onViewportEnter).toHaveBeenCalledTimes(1);
   });
 
-  it("does not call onLeaveView when once is true after trigger", async () => {
-    const onLeaveView = vi.fn();
+  it("does not call onViewportLeave when once is true after trigger", async () => {
+    const onViewportLeave = vi.fn();
 
     render(
-      <SplitText inView={{ once: true }} onLeaveView={onLeaveView}>
+      <SplitText viewport={{ once: true }} onViewportLeave={onViewportLeave}>
         <p>Hello World</p>
       </SplitText>
     );
@@ -214,11 +214,11 @@ describe("SplitText inView", () => {
       ]);
     });
 
-    // onLeaveView should not be called when once is true
-    expect(onLeaveView).not.toHaveBeenCalled();
+    // onViewportLeave should not be called when once is true
+    expect(onViewportLeave).not.toHaveBeenCalled();
   });
 
-  it("reverts after onInView animation completes with revertOnComplete", async () => {
+  it("reverts after onViewportEnter animation completes with revertOnComplete", async () => {
     let resolveAnimation: () => void;
     const animationPromise = new Promise<void>((resolve) => {
       resolveAnimation = resolve;
@@ -226,8 +226,8 @@ describe("SplitText inView", () => {
 
     const { container } = render(
       <SplitText
-        inView
-        onInView={() => ({ finished: animationPromise })}
+        viewport={{}}
+        onViewportEnter={() => ({ finished: animationPromise })}
         revertOnComplete
       >
         <p>Hello</p>
@@ -269,7 +269,7 @@ describe("SplitText inView", () => {
 
   it("disconnects IntersectionObserver on unmount", async () => {
     const { unmount } = render(
-      <SplitText inView>
+      <SplitText viewport={{}}>
         <p>Hello World</p>
       </SplitText>
     );
@@ -287,9 +287,9 @@ describe("SplitText inView", () => {
     expect(observer?.elements.size).toBe(0);
   });
 
-  it("does not set up observer when inView is false", async () => {
+  it("does not set up observer when no viewport props are provided", async () => {
     render(
-      <SplitText inView={false}>
+      <SplitText>
         <p>Hello World</p>
       </SplitText>
     );

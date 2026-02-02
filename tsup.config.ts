@@ -10,6 +10,6 @@ export default defineConfig({
   clean: true,
   treeshake: true,
   target: "es2017",
-  external: ["react", "react/jsx-runtime"],
+  external: ["react", "react/jsx-runtime", "motion"],
   splitting: true,
 });

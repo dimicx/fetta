@@ -92,17 +92,29 @@ interface SplitTextOptions {
   disableKerning?: boolean;
 }
 
-interface InViewOptions {
-  /** How much of the element must be visible (0-1). Default: 0 */
-  amount?: number;
-  /** Root margin for IntersectionObserver. Default: "0px" */
-  margin?: string;
+interface ScrollPropOptions {
+  /** Scroll offsets. Default: Motion's default ["start end", "end start"] */
+  offset?: string[];
+  /** Scroll axis. Default: "y" */
+  axis?: "x" | "y";
+  /** Custom scroll container ref. Default: nearest scrollable ancestor / window */
+  container?: React.RefObject<Element | null>;
+}
+
+/** Matches Motion's viewport prop */
+interface ViewportOptions {
   /** Only trigger once. Default: false */
   once?: boolean;
+  /** How much of the element must be visible. Motion supports "some" | "all" | number. Default: 0 */
+  amount?: number | "some" | "all";
+  /** Root margin for IntersectionObserver. Default: "0px" */
+  margin?: string;
+  /** Root element for IntersectionObserver */
+  root?: React.RefObject<Element>;
 }
 
 /**
- * Result passed to SplitText callbacks (onSplit, onInView, onLeaveView, onResize).
+ * Result passed to SplitText callbacks (onSplit, onViewportEnter, onViewportLeave, onResize).
  *
  * Contains arrays of split elements and a revert function for manual control.
  * Empty arrays are returned for split types not requested in options.
@@ -125,6 +137,159 @@ type CallbackReturn =
   | Array<{ finished: Promise<unknown> }>
   | Promise<unknown>;
 
+// ---------------------------------------------------------------------------
+// Variant types
+// ---------------------------------------------------------------------------
+
+/** Motion-compatible animation target (passed directly to motion.animate) */
+type VariantTarget = Record<string, string | number>;
+
+interface VariantTransition {
+  duration?: number;
+  ease?: string | number[] | readonly number[];
+  /** Converted to delay: stagger(n) internally */
+  stagger?: number;
+  delay?: number;
+  type?: "spring" | "tween";
+  stiffness?: number;
+  damping?: number;
+  mass?: number;
+  bounce?: number;
+}
+
+/** Per-type target with optional transition override */
+type PerTypeTarget = {
+  [key: string]: string | number | VariantTransition | undefined;
+  transition?: VariantTransition;
+};
+
+/** Flat variant target with optional transition override */
+type FlatVariantTarget = {
+  [key: string]: string | number | VariantTransition | PerTypeTarget | undefined;
+  transition?: VariantTransition;
+};
+
+/** A variant: flat target OR per-type targets, with optional transition */
+type VariantDefinition =
+  | FlatVariantTarget
+  | { chars?: PerTypeTarget; words?: PerTypeTarget; lines?: PerTypeTarget; transition?: VariantTransition };
+
+// ---------------------------------------------------------------------------
+// Dynamic Motion import — module-level cache
+// ---------------------------------------------------------------------------
+
+interface MotionApi {
+  animate: Function;
+  stagger: Function;
+  hover: Function;
+  scroll: Function;
+}
+
+let motionCache: MotionApi | null = null;
+
+async function loadMotion(): Promise<MotionApi> {
+  if (motionCache) return motionCache;
+  try {
+    const m = await import("motion");
+    motionCache = {
+      animate: m.animate,
+      stagger: m.stagger,
+      hover: m.hover,
+      scroll: m.scroll,
+    };
+    return motionCache;
+  } catch {
+    throw new Error(
+      "[fetta] Variants require 'motion' to be installed. Run: npm install motion"
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Variant helpers
+// ---------------------------------------------------------------------------
+
+const ELEMENT_TYPE_KEYS = ["chars", "words", "lines"] as const;
+
+/** Detect per-type vs flat variant */
+function isPerTypeVariant(v: VariantDefinition): v is { chars?: PerTypeTarget; words?: PerTypeTarget; lines?: PerTypeTarget } {
+  return ELEMENT_TYPE_KEYS.some(
+    (k) => k in v && typeof (v as Record<string, unknown>)[k] === "object" && (v as Record<string, unknown>)[k] !== null
+  );
+}
+
+/** Get most granular element type for flat variants */
+function getTargetElements(
+  result: SplitTextElements,
+  type?: string
+): HTMLSpanElement[] {
+  if (type?.includes("chars") && result.chars.length) return result.chars;
+  if (type?.includes("words") && result.words.length) return result.words;
+  if (type?.includes("lines") && result.lines.length) return result.lines;
+  return result.words;
+}
+
+/** Resolve stagger shorthand into motion transition options */
+function resolveTransition(
+  t: VariantTransition | undefined,
+  motionStagger: Function
+): Record<string, unknown> | undefined {
+  if (!t) return undefined;
+  const { stagger, ...rest } = t;
+  return {
+    ...rest,
+    delay: stagger != null ? motionStagger(stagger) : rest.delay,
+  };
+}
+
+/** Separate transition from animation props in a variant definition */
+function extractTransition(
+  variant: Record<string, unknown>
+): { props: Record<string, unknown>; transition?: VariantTransition } {
+  const { transition, ...props } = variant;
+  return { props, transition: transition as VariantTransition | undefined };
+}
+
+/**
+ * Animate elements to a variant. Returns an array of animation controls
+ * (each has a `.finished` promise).
+ */
+function animateVariant(
+  motion: MotionApi,
+  result: SplitTextElements,
+  variant: VariantDefinition,
+  globalTransition: VariantTransition | undefined,
+  type?: string
+): Array<{ finished: Promise<unknown> }> {
+  if (isPerTypeVariant(variant)) {
+    const animations: Array<{ finished: Promise<unknown> }> = [];
+    for (const key of ELEMENT_TYPE_KEYS) {
+      const target = variant[key];
+      if (!target || !result[key].length) continue;
+      const { props, transition: localT } = extractTransition(target as Record<string, unknown>);
+      const t = resolveTransition(localT || globalTransition, motion.stagger);
+      animations.push(motion.animate(result[key], props, t));
+    }
+    return animations;
+  } else {
+    const { props, transition: localT } = extractTransition(variant as Record<string, unknown>);
+    const elements = getTargetElements(result, type);
+    const t = resolveTransition(localT || globalTransition, motion.stagger);
+    return [motion.animate(elements, props, t)];
+  }
+}
+
+/** Wait for all animation controls to finish */
+function allFinished(
+  animations: Array<{ finished: Promise<unknown> }>
+): Promise<unknown[]> {
+  return Promise.all(animations.map((a) => a.finished));
+}
+
+// ---------------------------------------------------------------------------
+// Props
+// ---------------------------------------------------------------------------
+
 interface SplitTextProps {
   children: ReactElement;
   /** The wrapper element type. Default: "div" */
@@ -136,7 +301,7 @@ interface SplitTextProps {
   /**
    * Called after text is split.
    * Return an animation or promise to enable revert (requires revertOnComplete).
-   * If inView is enabled, this is called immediately but animation typically runs in onInView.
+   * Still fires in variant mode for side effects.
    */
   onSplit?: (result: SplitTextElements) => CallbackReturn;
   /** Called when autoSplit triggers a re-split on resize */
@@ -145,21 +310,45 @@ interface SplitTextProps {
   autoSplit?: boolean;
   /** When true, reverts to original HTML after animation promise resolves */
   revertOnComplete?: boolean;
-  /** Enable viewport detection. Pass true for defaults or InViewOptions for customization */
-  inView?: boolean | InViewOptions;
-  /** Called when element enters viewport. Return animation for revertOnComplete support */
-  onInView?: (result: SplitTextElements) => CallbackReturn;
-  /** Called when element leaves viewport */
-  onLeaveView?: (result: SplitTextElements) => CallbackReturn;
+  /** Viewport observer options (replaces `inView`). Configures IntersectionObserver. */
+  viewport?: ViewportOptions;
+  /** Called when element enters viewport (replaces `onInView`). Return animation for revertOnComplete support */
+  onViewportEnter?: (result: SplitTextElements) => CallbackReturn;
+  /** Called when element leaves viewport (replaces `onLeaveView`) */
+  onViewportLeave?: (result: SplitTextElements) => CallbackReturn;
   /** Apply initial inline styles to elements after split (and after kerning compensation).
    * Can be a static style object or a function that receives (element, index). */
   initialStyles?: InitialStyles;
   /** Apply initial classes to elements after split (and after kerning compensation).
    * Classes are added via classList.add() and support space-separated class names. */
   initialClasses?: InitialClasses;
-  /** Re-apply initialStyles and initialClasses when element leaves viewport.
+  /** Re-apply initialStyles/initialClasses (callback mode) or initial variant (variant mode) when element leaves viewport.
    * Useful for scroll-triggered animations that should reset when scrolling away. */
-  resetOnLeave?: boolean;
+  resetOnViewportLeave?: boolean;
+
+  // --- Variant props ---
+
+  /** Named variant definitions. Keys are variant names, values are animation targets. */
+  variants?: Record<string, VariantDefinition>;
+  /** Initial variant applied instantly (duration: 0) after split. Set to false to skip. */
+  initial?: string | false;
+  /** Variant to animate to immediately after split */
+  animate?: string;
+  /** Variant to animate to when entering viewport */
+  whileInView?: string;
+  /** Variant to scroll-animate to. Animation progress is driven by scroll position.
+   *  Takes priority over `animate` and `whileInView`. */
+  whileScroll?: string;
+  /** Scroll options for whileScroll. Configures target tracking and scroll range. */
+  scroll?: ScrollPropOptions;
+  /** Variant to animate to on hover */
+  whileHover?: string;
+  /** Called when hover starts */
+  onHoverStart?: () => void;
+  /** Called when hover ends */
+  onHoverEnd?: () => void;
+  /** Global transition options for variant animations */
+  transition?: VariantTransition;
 }
 
 /**
@@ -167,6 +356,10 @@ interface SplitTextProps {
  *
  * Wraps a single child element and splits its text content into characters,
  * words, and/or lines. Handles lifecycle cleanup automatically on unmount.
+ *
+ * Supports two modes:
+ * - **Callback mode**: Use `onSplit`, `onViewportEnter`, `onViewportLeave` for imperative animation control
+ * - **Variant mode**: Use `variants`, `initial`, `animate`, `whileInView`, `whileHover` for declarative animations powered by Motion
  *
  * @param props - Component props including callbacks and options
  * @returns The child element wrapped in a container div
@@ -176,7 +369,7 @@ interface SplitTextProps {
  * import { SplitText } from "fetta/react";
  * import { animate, stagger } from "motion";
  *
- * // Basic animation
+ * // Imperative animation
  * <SplitText
  *   onSplit={({ words }) => {
  *     animate(words, { opacity: [0, 1], y: [20, 0] }, { delay: stagger(0.05) });
@@ -188,30 +381,19 @@ interface SplitTextProps {
  *
  * @example
  * ```tsx
- * // Scroll-triggered with auto-revert
+ * // Declarative variants
  * <SplitText
- *   onSplit={({ chars }) => {
- *     chars.forEach(c => c.style.opacity = "0");
+ *   variants={{
+ *     hidden: { opacity: 0, y: 20 },
+ *     visible: { opacity: 1, y: 0 },
  *   }}
- *   inView={{ amount: 0.5, once: true }}
- *   onInView={({ chars }) =>
- *     animate(chars, { opacity: 1 }, { delay: stagger(0.02) })
- *   }
- *   revertOnComplete
+ *   initial="hidden"
+ *   whileInView="visible"
+ *   viewport={{ amount: 0.5, once: true }}
+ *   transition={{ duration: 0.65, stagger: 0.04 }}
+ *   options={{ type: "words" }}
  * >
- *   <p>Reveals on scroll, reverts after animation</p>
- * </SplitText>
- * ```
- *
- * @example
- * ```tsx
- * // Responsive re-splitting
- * <SplitText
- *   autoSplit
- *   onSplit={({ lines }) => animate(lines, { opacity: [0, 1] })}
- *   onResize={({ lines }) => animate(lines, { opacity: [0, 1] })}
- * >
- *   <p>Re-animates when container resizes</p>
+ *   <p>Reveals on scroll</p>
  * </SplitText>
  * ```
  */
@@ -227,12 +409,22 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
       options,
       autoSplit = false,
       revertOnComplete = false,
-      inView,
-      onInView,
-      onLeaveView,
+      viewport,
+      onViewportEnter,
+      onViewportLeave,
       initialStyles,
       initialClasses,
-      resetOnLeave = false,
+      resetOnViewportLeave = false,
+      variants,
+      initial: initialVariant,
+      animate: animateVariantName,
+      whileInView,
+      whileScroll,
+      scroll: scrollProp,
+      whileHover,
+      onHoverStart,
+      onHoverEnd,
+      transition,
     },
     forwardedRef
   ) {
@@ -253,29 +445,55 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
   const [childElement, setChildElement] = useState<HTMLElement | null>(null);
   const [isInView, setIsInView] = useState(false);
 
+  // Detect variant mode
+  const hasVariants = !!variants;
+
+  // Detect whether viewport observer is needed
+  const needsViewport = !!(whileInView || onViewportEnter || onViewportLeave || viewport);
+
   // Stable refs for callbacks and options
   const onSplitRef = useRef(onSplit);
   const onResizeRef = useRef(onResize);
   const optionsRef = useRef(options);
   const revertOnCompleteRef = useRef(revertOnComplete);
-  const inViewRef = useRef(inView);
-  const onInViewRef = useRef(onInView);
-  const onLeaveViewRef = useRef(onLeaveView);
+  const viewportRef = useRef(viewport);
+  const onViewportEnterRef = useRef(onViewportEnter);
+  const onViewportLeaveRef = useRef(onViewportLeave);
   const initialStylesRef = useRef(initialStyles);
   const initialClassesRef = useRef(initialClasses);
-  const resetOnLeaveRef = useRef(resetOnLeave);
+  const resetOnViewportLeaveRef = useRef(resetOnViewportLeave);
+  const variantsRef = useRef(variants);
+  const initialVariantRef = useRef(initialVariant);
+  const animateVariantNameRef = useRef(animateVariantName);
+  const whileInViewRef = useRef(whileInView);
+  const whileScrollRef = useRef(whileScroll);
+  const scrollPropRef = useRef(scrollProp);
+  const whileHoverRef = useRef(whileHover);
+  const onHoverStartRef = useRef(onHoverStart);
+  const onHoverEndRef = useRef(onHoverEnd);
+  const transitionRef = useRef(transition);
 
   useLayoutEffect(() => {
     onSplitRef.current = onSplit;
     onResizeRef.current = onResize;
     optionsRef.current = options;
     revertOnCompleteRef.current = revertOnComplete;
-    inViewRef.current = inView;
-    onInViewRef.current = onInView;
-    onLeaveViewRef.current = onLeaveView;
+    viewportRef.current = viewport;
+    onViewportEnterRef.current = onViewportEnter;
+    onViewportLeaveRef.current = onViewportLeave;
     initialStylesRef.current = initialStyles;
     initialClassesRef.current = initialClasses;
-    resetOnLeaveRef.current = resetOnLeave;
+    resetOnViewportLeaveRef.current = resetOnViewportLeave;
+    variantsRef.current = variants;
+    initialVariantRef.current = initialVariant;
+    animateVariantNameRef.current = animateVariantName;
+    whileInViewRef.current = whileInView;
+    whileScrollRef.current = whileScroll;
+    scrollPropRef.current = scrollProp;
+    whileHoverRef.current = whileHover;
+    onHoverStartRef.current = onHoverStart;
+    onHoverEndRef.current = onHoverEnd;
+    transitionRef.current = transition;
   });
 
   // Refs for tracking state
@@ -296,8 +514,14 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
     if (hasSplitRef.current) return;
 
     let isMounted = true;
+    const cleanups: Array<() => void> = [];
 
-    document.fonts.ready.then(() => {
+    // Load motion in parallel with fonts if variant mode
+    const readyPromise = hasVariants
+      ? Promise.all([document.fonts.ready, loadMotion()] as const)
+      : document.fonts.ready.then((v) => [v, null] as const);
+
+    readyPromise.then(async ([, motion]) => {
       if (!isMounted || hasSplitRef.current) return;
       if (!containerRef.current) return;
 
@@ -335,15 +559,110 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
       };
       splitResultRef.current = splitElements;
 
+      // --- Variant mode ---
+      if (motion && variantsRef.current) {
+        const vDefs = variantsRef.current;
+        const type = optionsRef.current?.type;
+        const globalTransition = transitionRef.current;
+
+        // 1. Apply initial variant instantly (duration: 0)
+        // Must await .finished so WAAPI commits the values before the next animation reads them
+        if (initialVariantRef.current !== false && initialVariantRef.current && vDefs[initialVariantRef.current]) {
+          const initAnimations = animateVariant(motion, splitElements, vDefs[initialVariantRef.current], { duration: 0 }, type);
+          await allFinished(initAnimations);
+        }
+
+        if (!isMounted) return;
+
+        // 2. Reveal container
+        containerRef.current!.style.visibility = "visible";
+
+        // 3. Call onSplit for side effects
+        onSplitRef.current?.(splitElements);
+
+        // 4. whileScroll (takes priority over animate and whileInView)
+        if (whileScrollRef.current && containerRef.current && vDefs[whileScrollRef.current]) {
+          const scrollOpts = scrollPropRef.current;
+
+          // Create animations to target variant — scroll() takes over playback
+          const animations = animateVariant(
+            motion, splitElements, vDefs[whileScrollRef.current], globalTransition, type
+          );
+
+          // Bind each animation to scroll progress
+          for (const anim of animations) {
+            const cancel = motion.scroll(anim, {
+              target: containerRef.current,
+              offset: scrollOpts?.offset,
+              axis: scrollOpts?.axis,
+              container: scrollOpts?.container?.current ?? undefined,
+            });
+            cleanups.push(cancel);
+          }
+        }
+
+        // 5. Immediate animate — skip if whileScroll is active
+        if (animateVariantNameRef.current && !whileInViewRef.current && !whileScrollRef.current && vDefs[animateVariantNameRef.current]) {
+          const animations = animateVariant(motion, splitElements, vDefs[animateVariantNameRef.current], globalTransition, type);
+
+          // Handle revertOnComplete
+          if (revertOnCompleteRef.current) {
+            allFinished(animations)
+              .then(() => {
+                if (!isMounted || hasRevertedRef.current) return;
+                result.revert();
+                hasRevertedRef.current = true;
+              })
+              .catch(() => {
+                console.warn("[fetta] Animation rejected, text not reverted");
+              });
+          }
+        }
+
+        // 6. whileHover
+        if (whileHoverRef.current && containerRef.current && vDefs[whileHoverRef.current]) {
+          const hoverVariantName = whileHoverRef.current;
+          // Determine base variant to return to on hover end
+          const baseVariantName = animateVariantNameRef.current || initialVariantRef.current;
+
+          const cancelHover = motion.hover(containerRef.current, () => {
+            onHoverStartRef.current?.();
+            if (vDefs[hoverVariantName]) {
+              animateVariant(motion, splitElements, vDefs[hoverVariantName], globalTransition, type);
+            }
+
+            // Return cleanup = hover end
+            return () => {
+              onHoverEndRef.current?.();
+              if (baseVariantName && typeof baseVariantName === "string" && vDefs[baseVariantName]) {
+                animateVariant(motion, splitElements, vDefs[baseVariantName], globalTransition, type);
+              }
+            };
+          });
+
+          cleanups.push(cancelHover);
+        }
+
+        // 7. Set up viewport observer for whileInView — skip if whileScroll is active
+        if (!whileScrollRef.current && whileInViewRef.current && containerRef.current) {
+          // Viewport observer handled via isInView state + dedicated effect
+          setupViewportObserver(containerRef.current);
+        }
+
+        return;
+      }
+
+      // --- Callback mode (existing behavior) ---
+
       // Reveal after split
-      containerRef.current.style.visibility = "visible";
+      containerRef.current!.style.visibility = "visible";
 
       // Call onSplit if provided
       if (onSplitRef.current) {
         const callbackResult = onSplitRef.current(splitElements);
 
-        // Handle revertOnComplete for onSplit (only when inView is NOT enabled)
-        if (!inViewRef.current && revertOnCompleteRef.current) {
+        // Handle revertOnComplete for onSplit (only when viewport is NOT enabled)
+        if (!needsViewport && revertOnCompleteRef.current) {
           const promise = normalizeToPromise(callbackResult);
           if (promise) {
             promise
@@ -365,44 +684,51 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
         }
       }
 
-      // Set up IntersectionObserver if inView is enabled
-      if (inViewRef.current && containerRef.current) {
-        const inViewOptions =
-          typeof inViewRef.current === "object" ? inViewRef.current : {};
-        const threshold = inViewOptions.amount ?? 0;
-        const rootMargin = inViewOptions.margin ?? "0px";
-
-        // Use array with both 0 and user's threshold to detect entering at threshold
-        // AND fully exiting (asymmetric: enter at threshold, leave at 0)
-        const thresholds = threshold > 0 ? [0, threshold] : 0;
-
-        observerRef.current = new IntersectionObserver(
-          (entries) => {
-            const entry = entries[0];
-            if (!entry) return;
-
-            const isOnce =
-              typeof inViewRef.current === "object" && inViewRef.current.once;
-
-            // Enter: when element is intersecting AND ratio is at/above threshold
-            if (entry.isIntersecting && entry.intersectionRatio >= threshold) {
-              if (isOnce && hasTriggeredOnceRef.current) return;
-              hasTriggeredOnceRef.current = true;
-              setIsInView(true);
-            } else if (!entry.isIntersecting && !isOnce) {
-              // Leave: only when element has fully exited viewport
-              setIsInView(false);
-            }
-          },
-          { threshold: thresholds, rootMargin }
-        );
-
-        observerRef.current.observe(containerRef.current);
+      // Set up IntersectionObserver if viewport callbacks are present
+      if (needsViewport && containerRef.current) {
+        setupViewportObserver(containerRef.current);
       }
     });
 
+    function setupViewportObserver(container: HTMLElement) {
+      const vpOptions = viewportRef.current || {};
+      const amount = vpOptions.amount ?? 0;
+      const threshold =
+        amount === "some" ? 0 : amount === "all" ? 1 : amount;
+      const rootMargin = vpOptions.margin ?? "0px";
+      const root = vpOptions.root?.current ?? undefined;
+
+      // Use array with both 0 and user's threshold to detect entering at threshold
+      // AND fully exiting (asymmetric: enter at threshold, leave at 0)
+      const thresholds = threshold > 0 ? [0, threshold] : 0;
+
+      observerRef.current = new IntersectionObserver(
+        (entries) => {
+          const entry = entries[0];
+          if (!entry) return;
+
+          const isOnce = vpOptions.once;
+
+          // Enter: when element is intersecting AND ratio is at/above threshold
+          if (entry.isIntersecting && entry.intersectionRatio >= threshold) {
+            if (isOnce && hasTriggeredOnceRef.current) return;
+            hasTriggeredOnceRef.current = true;
+            setIsInView(true);
+          } else if (!entry.isIntersecting && !isOnce) {
+            // Leave: only when element has fully exited viewport
+            setIsInView(false);
+          }
+        },
+        { threshold: thresholds, rootMargin, root }
+      );
+
+      observerRef.current.observe(container);
+    }
+
     return () => {
       isMounted = false;
+      // Run accumulated cleanups (hover, etc.)
+      for (const fn of cleanups) fn();
       // Cleanup observer
       if (observerRef.current) {
         observerRef.current.disconnect();
@@ -415,15 +741,46 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
       // Reset for StrictMode remount
       hasSplitRef.current = false;
     };
-  }, [childElement, autoSplit]);
+  }, [childElement, autoSplit, hasVariants, needsViewport]);
 
   // Handle isInView changes
   useEffect(() => {
     if (!splitResultRef.current) return;
     if (hasRevertedRef.current) return;
 
-    if (isInView && onInViewRef.current) {
-      const callbackResult = onInViewRef.current(splitResultRef.current);
+    // --- Variant mode viewport handling ---
+    if (hasVariants && variantsRef.current && motionCache) {
+      const motion = motionCache;
+      const vDefs = variantsRef.current;
+      const type = optionsRef.current?.type;
+      const globalTransition = transitionRef.current;
+      const isOnce = viewportRef.current?.once;
+
+      if (isInView) {
+        // Also call onViewportEnter callback if provided
+        onViewportEnterRef.current?.(splitResultRef.current);
+
+        const variantName = whileInViewRef.current;
+        if (variantName && vDefs[variantName]) {
+          animateVariant(motion, splitResultRef.current, vDefs[variantName], globalTransition, type);
+        }
+      } else {
+        // Also call onViewportLeave callback if provided
+        onViewportLeaveRef.current?.(splitResultRef.current);
+
+        if (!isOnce && resetOnViewportLeaveRef.current) {
+          const initName = initialVariantRef.current;
+          if (initName && typeof initName === "string" && vDefs[initName]) {
+            animateVariant(motion, splitResultRef.current, vDefs[initName], { duration: 0 }, type);
+          }
+        }
+      }
+      return;
+    }
+
+    // --- Callback mode viewport handling ---
+    if (isInView && onViewportEnterRef.current) {
+      const callbackResult = onViewportEnterRef.current(splitResultRef.current);
       const promise = normalizeToPromise(callbackResult);
 
       if (revertOnCompleteRef.current && promise) {
@@ -439,7 +796,7 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
       }
     } else if (!isInView && splitResultRef.current) {
       // Re-apply initial styles/classes when leaving viewport
-      if (resetOnLeaveRef.current) {
+      if (resetOnViewportLeaveRef.current) {
         const { chars, words, lines } = splitResultRef.current;
         const styles = initialStylesRef.current;
         const classes = initialClassesRef.current;
@@ -457,12 +814,12 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
         }
       }
 
-      // Call onLeaveView callback if provided
-      if (onLeaveViewRef.current) {
-        onLeaveViewRef.current(splitResultRef.current);
+      // Call onViewportLeave callback if provided
+      if (onViewportLeaveRef.current) {
+        onViewportLeaveRef.current(splitResultRef.current);
       }
     }
-  }, [isInView]);
+  }, [isInView, hasVariants]);
 
   if (!isValidElement(children)) {
     console.error("SplitText: children must be a single valid React element");
