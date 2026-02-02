@@ -147,8 +147,6 @@ type VariantTarget = Record<string, string | number>;
 interface VariantTransition {
   duration?: number;
   ease?: string | number[] | readonly number[];
-  /** Converted to delay: stagger(n) internally */
-  stagger?: number;
   /** Static number or stagger function (i, total) => number from motion */
   delay?: number | ((index: number, total: number) => number);
   type?: "spring" | "tween";
@@ -203,7 +201,6 @@ type VariantDefinition =
 
 interface MotionApi {
   animate: Function;
-  stagger: Function;
   hover: Function;
   scroll: Function;
 }
@@ -216,7 +213,6 @@ async function loadMotion(): Promise<MotionApi> {
     const m = await import("motion");
     motionCache = {
       animate: m.animate,
-      stagger: m.stagger,
       hover: m.hover,
       scroll: m.scroll,
     };
@@ -262,17 +258,15 @@ function getTargetType(result: SplitTextElements, type?: string): "chars" | "wor
   return "words";
 }
 
-/** Resolve stagger shorthand into motion transition options */
+/** Normalize transition options before passing to Motion */
 function resolveTransition(
-  t: VariantTransition | undefined,
-  motionStagger: Function
+  t: VariantTransition | undefined
 ): Record<string, unknown> | undefined {
   if (!t) return undefined;
-  const { stagger, ...rest } = t;
-  return {
-    ...rest,
-    delay: stagger != null ? motionStagger(stagger) : rest.delay,
+  const { stagger: _stagger, ...rest } = t as VariantTransition & {
+    stagger?: unknown;
   };
+  return { ...rest };
 }
 
 /** Separate transition from animation props in a variant definition */
@@ -439,7 +433,8 @@ function buildFnSequence(
   maps: IndexMaps,
   transition: VariantTransition | undefined
 ): Array<[HTMLSpanElement, Record<string, unknown>, Record<string, unknown>?]> {
-  const { stagger: staggerVal, delay: outerDelay, duration, ...rest } = transition || {};
+  const t = transition as (VariantTransition & { stagger?: unknown }) | undefined;
+  const { delay: outerDelay, duration, stagger: _stagger, ...rest } = t || {};
   const segments: Array<[HTMLSpanElement, Record<string, unknown>, Record<string, unknown>?]> = [];
   const total = elements.length;
 
@@ -458,13 +453,9 @@ function buildFnSequence(
       ? (rawDelay as (i: number, t: number) => number)(info.index, info.count)
       : rawDelay as number | undefined;
 
-    // Outer stagger (from global transition) uses global loop index
-    const staggerOffset = staggerVal != null ? staggerVal * i : 0;
-
-    if (resolvedDelay != null || staggerOffset) {
-      merged.at = (resolvedDelay ?? 0) + staggerOffset;
+    if (resolvedDelay != null) {
+      merged.at = resolvedDelay;
       delete merged.delay;
-      delete merged.stagger;
     }
 
     segments.push([elements[i], props, Object.keys(merged).length ? merged : undefined]);
@@ -514,7 +505,7 @@ function animateVariant(
         } else {
           // Static per-type target — use existing path
           const { props, transition: localT } = extractTransition(target as Record<string, unknown>);
-          const t = resolveTransition(localT || globalTransition, motion.stagger);
+          const t = resolveTransition(localT || globalTransition);
           staticAnimations.push(motion.animate(result[key], props, t));
         }
       }
@@ -532,7 +523,7 @@ function animateVariant(
       const target = perType[key];
       if (!target || !result[key].length) continue;
       const { props, transition: localT } = extractTransition(target as Record<string, unknown>);
-      const t = resolveTransition(localT || globalTransition, motion.stagger);
+      const t = resolveTransition(localT || globalTransition);
       animations.push(motion.animate(result[key], props, t));
     }
     return animations;
@@ -541,7 +532,7 @@ function animateVariant(
   // Case 4: Flat static variant — unchanged
   const { props, transition: localT } = extractTransition(variant as Record<string, unknown>);
   const elements = getTargetElements(result, type);
-  const t = resolveTransition(localT || globalTransition, motion.stagger);
+  const t = resolveTransition(localT || globalTransition);
   return [motion.animate(elements, props, t)];
 }
 
@@ -649,6 +640,7 @@ interface SplitTextProps {
  * @example
  * ```tsx
  * // Declarative variants
+ * import { stagger } from "motion";
  * <SplitText
  *   variants={{
  *     hidden: { opacity: 0, y: 20 },
@@ -657,7 +649,7 @@ interface SplitTextProps {
  *   initial="hidden"
  *   whileInView="visible"
  *   viewport={{ amount: 0.5, once: true }}
- *   transition={{ duration: 0.65, stagger: 0.04 }}
+ *   transition={{ duration: 0.65, delay: stagger(0.04) }}
  *   options={{ type: "words" }}
  * >
  *   <p>Reveals on scroll</p>
