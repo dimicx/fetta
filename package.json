@@ -1,6 +1,6 @@
 {
   "name": "fetta",
-  "version": "1.4.3",
+  "version": "1.4.4",
   "description": "Text splitting library with kerning compensation for animations",
   "type": "module",
   "sideEffects": false,
@@ -80,11 +80,20 @@
   "keywords": [
     "text",
     "split",
+    "split-text",
+    "splittext",
+    "text-animation",
+    "text-effect",
     "animation",
     "motion",
     "kerning",
     "typography",
-    "gsap"
+    "gsap",
+    "javascript",
+    "typescript",
+    "react",
+    "web-animation",
+    "accessible"
   ],
   "license": "MIT",
   "author": "dimi",
