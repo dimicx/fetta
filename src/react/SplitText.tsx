@@ -149,12 +149,29 @@ interface VariantTransition {
   ease?: string | number[] | readonly number[];
   /** Converted to delay: stagger(n) internally */
   stagger?: number;
-  delay?: number;
+  /** Static number or stagger function (i, total) => number from motion */
+  delay?: number | ((index: number, total: number) => number);
   type?: "spring" | "tween";
   stiffness?: number;
   damping?: number;
   mass?: number;
   bounce?: number;
+}
+
+/** Info passed to function variant callbacks */
+export interface VariantInfo {
+  /** Relative index within nearest split parent (line > word > global) */
+  index: number;
+  /** Total elements in that parent group */
+  count: number;
+  /** Absolute index across all elements of this type */
+  globalIndex: number;
+  /** Total elements of this type across the entire split */
+  globalCount: number;
+  /** Parent line index (0 if lines not split) */
+  lineIndex: number;
+  /** Parent word index (0 if words not split) */
+  wordIndex: number;
 }
 
 /** Per-type target with optional transition override */
@@ -169,10 +186,16 @@ type FlatVariantTarget = {
   transition?: VariantTransition;
 };
 
-/** A variant: flat target OR per-type targets, with optional transition */
+/** A variant: flat target, flat function, per-type targets (static or function), with optional transition */
 type VariantDefinition =
   | FlatVariantTarget
-  | { chars?: PerTypeTarget; words?: PerTypeTarget; lines?: PerTypeTarget; transition?: VariantTransition };
+  | ((info: VariantInfo) => PerTypeTarget)
+  | {
+      chars?: PerTypeTarget | ((info: VariantInfo) => PerTypeTarget);
+      words?: PerTypeTarget | ((info: VariantInfo) => PerTypeTarget);
+      lines?: PerTypeTarget | ((info: VariantInfo) => PerTypeTarget);
+      transition?: VariantTransition;
+    };
 
 // ---------------------------------------------------------------------------
 // Dynamic Motion import — module-level cache
@@ -212,10 +235,12 @@ async function loadMotion(): Promise<MotionApi> {
 const ELEMENT_TYPE_KEYS = ["chars", "words", "lines"] as const;
 
 /** Detect per-type vs flat variant */
-function isPerTypeVariant(v: VariantDefinition): v is { chars?: PerTypeTarget; words?: PerTypeTarget; lines?: PerTypeTarget } {
-  return ELEMENT_TYPE_KEYS.some(
-    (k) => k in v && typeof (v as Record<string, unknown>)[k] === "object" && (v as Record<string, unknown>)[k] !== null
-  );
+function isPerTypeVariant(v: VariantDefinition): boolean {
+  if (typeof v === "function") return false;
+  return ELEMENT_TYPE_KEYS.some((k) => {
+    const val = (v as Record<string, unknown>)[k];
+    return val != null && (typeof val === "object" || typeof val === "function");
+  });
 }
 
 /** Get most granular element type for flat variants */
@@ -227,6 +252,14 @@ function getTargetElements(
   if (type?.includes("words") && result.words.length) return result.words;
   if (type?.includes("lines") && result.lines.length) return result.lines;
   return result.words;
+}
+
+/** Get most granular element type name for flat variants */
+function getTargetType(result: SplitTextElements, type?: string): "chars" | "words" | "lines" {
+  if (type?.includes("chars") && result.chars.length) return "chars";
+  if (type?.includes("words") && result.words.length) return "words";
+  if (type?.includes("lines") && result.lines.length) return "lines";
+  return "words";
 }
 
 /** Resolve stagger shorthand into motion transition options */
@@ -250,10 +283,196 @@ function extractTransition(
   return { props, transition: transition as VariantTransition | undefined };
 }
 
+// ---------------------------------------------------------------------------
+// Index maps for function variants
+// ---------------------------------------------------------------------------
+
+interface IndexMaps {
+  charToWord: number[];
+  charToLine: number[];
+  wordToLine: number[];
+  /** Relative index + group count per element, keyed by parent */
+  charInWord: number[];
+  charCountInWord: number[];
+  charInLine: number[];
+  charCountInLine: number[];
+  wordInLine: number[];
+  wordCountInLine: number[];
+}
+
+function buildIndexMaps(result: SplitTextElements): IndexMaps {
+  const charToWord: number[] = [];
+  const charToLine: number[] = [];
+  const wordToLine: number[] = [];
+
+  // char → word
+  if (result.chars.length && result.words.length) {
+    let wi = 0;
+    for (let ci = 0; ci < result.chars.length; ci++) {
+      while (wi < result.words.length - 1 && !result.words[wi].contains(result.chars[ci])) wi++;
+      charToWord[ci] = wi;
+    }
+  }
+
+  // word → line
+  if (result.words.length && result.lines.length) {
+    let li = 0;
+    for (let wi = 0; wi < result.words.length; wi++) {
+      while (li < result.lines.length - 1 && !result.lines[li].contains(result.words[wi])) li++;
+      wordToLine[wi] = li;
+    }
+  }
+
+  // char → line (derive from char→word→line, or direct if no words)
+  if (result.chars.length && result.lines.length) {
+    if (charToWord.length && wordToLine.length) {
+      for (let ci = 0; ci < result.chars.length; ci++) charToLine[ci] = wordToLine[charToWord[ci]];
+    } else {
+      let li = 0;
+      for (let ci = 0; ci < result.chars.length; ci++) {
+        while (li < result.lines.length - 1 && !result.lines[li].contains(result.chars[ci])) li++;
+        charToLine[ci] = li;
+      }
+    }
+  }
+
+  // Relative indices + group counts
+  const charInWord: number[] = [];
+  const charCountInWord: number[] = [];
+  const charInLine: number[] = [];
+  const charCountInLine: number[] = [];
+  const wordInLine: number[] = [];
+  const wordCountInLine: number[] = [];
+
+  if (charToWord.length) {
+    let prev = -1, counter = 0;
+    for (let ci = 0; ci < charToWord.length; ci++) {
+      if (charToWord[ci] !== prev) { counter = 0; prev = charToWord[ci]; }
+      charInWord[ci] = counter++;
+    }
+    const countByGroup: number[] = [];
+    for (let ci = charInWord.length - 1; ci >= 0; ci--) {
+      if (ci === charInWord.length - 1 || charToWord[ci] !== charToWord[ci + 1]) {
+        countByGroup[charToWord[ci]] = charInWord[ci] + 1;
+      }
+    }
+    for (let ci = 0; ci < charToWord.length; ci++) {
+      charCountInWord[ci] = countByGroup[charToWord[ci]];
+    }
+  }
+
+  if (charToLine.length) {
+    // Relative indices
+    let prev = -1, counter = 0;
+    for (let ci = 0; ci < charToLine.length; ci++) {
+      if (charToLine[ci] !== prev) { counter = 0; prev = charToLine[ci]; }
+      charInLine[ci] = counter++;
+    }
+    // Group counts (backwards pass to find last index per group, then fill)
+    const countByGroup: number[] = [];
+    for (let ci = charInLine.length - 1; ci >= 0; ci--) {
+      if (ci === charInLine.length - 1 || charToLine[ci] !== charToLine[ci + 1]) {
+        countByGroup[charToLine[ci]] = charInLine[ci] + 1;
+      }
+    }
+    for (let ci = 0; ci < charToLine.length; ci++) {
+      charCountInLine[ci] = countByGroup[charToLine[ci]];
+    }
+  }
+
+  if (wordToLine.length) {
+    let prev = -1, counter = 0;
+    for (let wi = 0; wi < wordToLine.length; wi++) {
+      if (wordToLine[wi] !== prev) { counter = 0; prev = wordToLine[wi]; }
+      wordInLine[wi] = counter++;
+    }
+    const countByGroup: number[] = [];
+    for (let wi = wordInLine.length - 1; wi >= 0; wi--) {
+      if (wi === wordInLine.length - 1 || wordToLine[wi] !== wordToLine[wi + 1]) {
+        countByGroup[wordToLine[wi]] = wordInLine[wi] + 1;
+      }
+    }
+    for (let wi = 0; wi < wordToLine.length; wi++) {
+      wordCountInLine[wi] = countByGroup[wordToLine[wi]];
+    }
+  }
+
+  return { charToWord, charToLine, wordToLine, charInWord, charCountInWord, charInLine, charCountInLine, wordInLine, wordCountInLine };
+}
+
+function buildFnInfo(
+  elementType: "chars" | "words" | "lines",
+  globalIndex: number,
+  total: number,
+  maps: IndexMaps
+): VariantInfo {
+  if (elementType === "chars") {
+    const lineIndex = maps.charToLine.length ? maps.charToLine[globalIndex] : 0;
+    const wordIndex = maps.charToWord.length ? maps.charToWord[globalIndex] : 0;
+    // Relative to highest parent: line > word > global
+    const index = maps.charInLine.length ? maps.charInLine[globalIndex]
+      : maps.charInWord.length ? maps.charInWord[globalIndex]
+      : globalIndex;
+    const count = maps.charCountInLine.length ? maps.charCountInLine[globalIndex]
+      : maps.charCountInWord.length ? maps.charCountInWord[globalIndex]
+      : total;
+    return { index, count, globalIndex, globalCount: total, lineIndex, wordIndex };
+  }
+  if (elementType === "words") {
+    const lineIndex = maps.wordToLine.length ? maps.wordToLine[globalIndex] : 0;
+    const index = maps.wordInLine.length ? maps.wordInLine[globalIndex] : globalIndex;
+    const count = maps.wordCountInLine.length ? maps.wordCountInLine[globalIndex] : total;
+    return { index, count, globalIndex, globalCount: total, lineIndex, wordIndex: globalIndex };
+  }
+  return { index: globalIndex, count: total, globalIndex, globalCount: total, lineIndex: globalIndex, wordIndex: 0 };
+}
+
 /**
- * Animate elements to a variant. Returns an array of animation controls
- * (each has a `.finished` promise).
+ * Build motion sequence segments for function variants.
+ * Each element gets its own segment with resolved props from the fn.
+ * If delay is a stagger function (from motion), it's called with (info.index, info.count).
  */
+function buildFnSequence(
+  elements: HTMLSpanElement[],
+  elementType: "chars" | "words" | "lines",
+  fn: (info: VariantInfo) => PerTypeTarget,
+  maps: IndexMaps,
+  transition: VariantTransition | undefined
+): Array<[HTMLSpanElement, Record<string, unknown>, Record<string, unknown>?]> {
+  const { stagger: staggerVal, delay: outerDelay, duration, ...rest } = transition || {};
+  const segments: Array<[HTMLSpanElement, Record<string, unknown>, Record<string, unknown>?]> = [];
+  const total = elements.length;
+
+  for (let i = 0; i < total; i++) {
+    const info = buildFnInfo(elementType, i, total, maps);
+    const { transition: localT, ...props } = fn(info);
+    // Merge: per-element transition from fn return overrides outer transition
+    const merged: Record<string, unknown> = localT
+      ? { ...rest, ...(localT as Record<string, unknown>) }
+      : { ...rest };
+    if (duration != null && !('duration' in merged)) merged.duration = duration;
+
+    // Resolve delay — may be a stagger function from motion
+    const rawDelay = merged.delay ?? outerDelay;
+    const resolvedDelay = typeof rawDelay === "function"
+      ? (rawDelay as (i: number, t: number) => number)(info.index, info.count)
+      : rawDelay as number | undefined;
+
+    // Outer stagger (from global transition) uses global loop index
+    const staggerOffset = staggerVal != null ? staggerVal * i : 0;
+
+    if (resolvedDelay != null || staggerOffset) {
+      merged.at = (resolvedDelay ?? 0) + staggerOffset;
+      delete merged.delay;
+      delete merged.stagger;
+    }
+
+    segments.push([elements[i], props, Object.keys(merged).length ? merged : undefined]);
+  }
+
+  return segments;
+}
+
 function animateVariant(
   motion: MotionApi,
   result: SplitTextElements,
@@ -261,22 +480,69 @@ function animateVariant(
   globalTransition: VariantTransition | undefined,
   type?: string
 ): Array<{ finished: Promise<unknown> }> {
+  // Case 1: Flat function variant
+  if (typeof variant === "function") {
+    const targetType = getTargetType(result, type);
+    const elements = result[targetType];
+    if (!elements.length) return [];
+    const maps = buildIndexMaps(result);
+    const segments = buildFnSequence(elements, targetType, variant, maps, globalTransition);
+    return [motion.animate(segments)];
+  }
+
+  // Case 2 & 3: Per-type variant (may contain function values)
   if (isPerTypeVariant(variant)) {
+    const perType = variant as Record<string, unknown>;
+    const hasFnKey = ELEMENT_TYPE_KEYS.some(
+      (k) => typeof perType[k] === "function"
+    );
+
+    if (hasFnKey) {
+      // Build index maps once for all function keys
+      const maps = buildIndexMaps(result);
+      const allSegments: Array<[HTMLSpanElement, Record<string, unknown>, Record<string, unknown>?]> = [];
+      const staticAnimations: Array<{ finished: Promise<unknown> }> = [];
+
+      for (const key of ELEMENT_TYPE_KEYS) {
+        const target = perType[key];
+        if (!target || !result[key].length) continue;
+
+        if (typeof target === "function") {
+          const localTransition = (perType.transition as VariantTransition | undefined) || globalTransition;
+          const segments = buildFnSequence(result[key], key, target as (info: any) => PerTypeTarget, maps, localTransition);
+          allSegments.push(...segments);
+        } else {
+          // Static per-type target — use existing path
+          const { props, transition: localT } = extractTransition(target as Record<string, unknown>);
+          const t = resolveTransition(localT || globalTransition, motion.stagger);
+          staticAnimations.push(motion.animate(result[key], props, t));
+        }
+      }
+
+      const animations = [...staticAnimations];
+      if (allSegments.length) {
+        animations.push(motion.animate(allSegments));
+      }
+      return animations;
+    }
+
+    // Case 3: All static per-type — unchanged
     const animations: Array<{ finished: Promise<unknown> }> = [];
     for (const key of ELEMENT_TYPE_KEYS) {
-      const target = variant[key];
+      const target = perType[key];
       if (!target || !result[key].length) continue;
       const { props, transition: localT } = extractTransition(target as Record<string, unknown>);
       const t = resolveTransition(localT || globalTransition, motion.stagger);
       animations.push(motion.animate(result[key], props, t));
     }
     return animations;
-  } else {
-    const { props, transition: localT } = extractTransition(variant as Record<string, unknown>);
-    const elements = getTargetElements(result, type);
-    const t = resolveTransition(localT || globalTransition, motion.stagger);
-    return [motion.animate(elements, props, t)];
   }
+
+  // Case 4: Flat static variant — unchanged
+  const { props, transition: localT } = extractTransition(variant as Record<string, unknown>);
+  const elements = getTargetElements(result, type);
+  const t = resolveTransition(localT || globalTransition, motion.stagger);
+  return [motion.animate(elements, props, t)];
 }
 
 /** Wait for all animation controls to finish */
@@ -347,7 +613,8 @@ interface SplitTextProps {
   onHoverStart?: () => void;
   /** Called when hover ends */
   onHoverEnd?: () => void;
-  /** Global transition options for variant animations */
+  /** Global transition options for variant animations.
+   *  Precedence: per-element fn return > per-variant transition > this global transition. */
   transition?: VariantTransition;
 }
 
