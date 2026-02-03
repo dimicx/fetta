@@ -114,6 +114,29 @@ For Motion variants:
 import { SplitText } from 'fetta/react-motion';
 ```
 
+Animate on exit with Motion's `AnimatePresence`:
+
+```tsx
+import { AnimatePresence } from "motion/react";
+
+<AnimatePresence>
+  {isVisible && (
+    <SplitText
+      variants={{
+        enter: { opacity: 1, y: 0 },
+        exit: { opacity: 0, y: 12 },
+      }}
+      initial="enter"
+      animate="enter"
+      exit="exit"
+      options={{ type: "words" }}
+    >
+      <h1>Goodbye</h1>
+    </SplitText>
+  )}
+</AnimatePresence>
+```
+
 #### Props
 
 | Prop | Type | Default | Description |
