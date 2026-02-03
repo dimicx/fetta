@@ -196,10 +196,8 @@ interface MotionApi {
 const motionApi: MotionApi = { animate, hover, scroll };
 
 type MotionAnimation = ReturnType<typeof animate>;
-type MotionScrollOptions = Parameters<typeof scroll>[1];
-type MotionScrollOffset = MotionScrollOptions extends { offset?: infer O }
-  ? O
-  : never;
+type MotionScrollOptions = NonNullable<Parameters<typeof scroll>[1]>;
+type MotionScrollOffset = MotionScrollOptions["offset"];
 
 // ---------------------------------------------------------------------------
 // Variant helpers
