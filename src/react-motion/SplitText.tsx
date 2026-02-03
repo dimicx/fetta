@@ -715,7 +715,13 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
   const hasVariants = !!variants;
 
   // Detect whether viewport observer is needed
-  const needsViewport = !!(whileInView || onViewportEnter || onViewportLeave || viewport);
+  const needsViewport = !!(
+    whileInView ||
+    onViewportEnter ||
+    onViewportLeave ||
+    resetOnViewportLeave ||
+    viewport
+  );
 
   // Stable refs for callbacks and options
   const onSplitRef = useRef(onSplit);
@@ -898,8 +904,8 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
       cleanups.push(cancelHover);
     }
 
-    // whileInView observer (skip if whileScroll is active)
-    if (!whileScrollRef.current && whileInViewRef.current) {
+    // Viewport observer (skip if whileScroll is active)
+    if (!whileScrollRef.current && needsViewport) {
       setupViewportObserver(container);
     }
 

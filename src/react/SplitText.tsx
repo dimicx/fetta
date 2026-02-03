@@ -240,7 +240,12 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
     const [isInView, setIsInView] = useState(false);
 
     // Detect whether viewport observer is needed
-    const needsViewport = !!(onViewportEnter || onViewportLeave || viewport);
+    const needsViewport = !!(
+      onViewportEnter ||
+      onViewportLeave ||
+      resetOnViewportLeave ||
+      viewport
+    );
 
     // Stable refs for callbacks and options
     const onSplitRef = useRef(onSplit);
