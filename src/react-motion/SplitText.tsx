@@ -428,7 +428,8 @@ function buildFnItems(
   fn: VariantResolver,
   maps: IndexMaps,
   transition: AnimationOptions | undefined,
-  isPresent: boolean
+  isPresent: boolean,
+  instant = false
 ): FnAnimationItem[] {
   const t = transition;
   const { delay: outerDelay, duration, ...rest } = t || {};
@@ -438,6 +439,14 @@ function buildFnItems(
   for (let i = 0; i < total; i++) {
     const info = buildFnInfo(elementType, i, total, maps, isPresent);
     const { transition: localT, ...props } = fn(info);
+    if (instant) {
+      items.push({
+        element: elements[i],
+        props,
+        transition: { duration: 0 },
+      });
+      continue;
+    }
     // Merge: per-element transition from fn return overrides outer transition
     let merged: AnimationOptions = localT ? { ...rest, ...localT } : { ...rest };
     if (duration != null && merged.duration == null) {
@@ -474,15 +483,27 @@ function animateVariant(
   variant: VariantDefinition,
   globalTransition: AnimationOptions | undefined,
   type?: string,
-  isPresent = true
+  isPresent = true,
+  options?: { instant?: boolean }
 ): MotionAnimation[] {
+  const instant = options?.instant === true;
+  const instantTransition: AnimationOptions = { duration: 0 };
+
   // Case 1: Flat function variant
   if (typeof variant === "function") {
     const targetType = getTargetType(result, type);
     const elements = result[targetType];
     if (!elements.length) return [];
     const maps = getIndexMaps(result);
-    const items = buildFnItems(elements, targetType, variant, maps, globalTransition, isPresent);
+    const items = buildFnItems(
+      elements,
+      targetType,
+      variant,
+      maps,
+      globalTransition,
+      isPresent,
+      instant
+    );
     return items.map((item) =>
       motion.animate(item.element, item.props, item.transition)
     );
@@ -505,14 +526,17 @@ function animateVariant(
         if (!target || !result[key].length) continue;
 
         if (typeof target === "function") {
-          const localTransition = variant.transition || globalTransition;
+          const localTransition = instant
+            ? undefined
+            : variant.transition || globalTransition;
           const items = buildFnItems(
             result[key],
             key,
             target,
             maps,
             localTransition,
-            isPresent
+            isPresent,
+            instant
           );
           fnAnimations.push(
             ...items.map((item) =>
@@ -522,7 +546,7 @@ function animateVariant(
         } else {
           // Static per-type target — use existing path
           const { props, transition: localT } = extractTransition(target);
-          const t = localT || globalTransition;
+          const t = instant ? instantTransition : localT || globalTransition;
           staticAnimations.push(motion.animate(result[key], props, t));
         }
       }
@@ -536,7 +560,7 @@ function animateVariant(
       const target = variant[key];
       if (!target || !result[key].length || typeof target === "function") continue;
       const { props, transition: localT } = extractTransition(target);
-      const t = localT || globalTransition;
+      const t = instant ? instantTransition : localT || globalTransition;
       animations.push(motion.animate(result[key], props, t));
     }
     return animations;
@@ -545,7 +569,7 @@ function animateVariant(
   // Case 4: Flat static variant — unchanged
   const { props, transition: localT } = extractTransition(variant);
   const elements = getTargetElements(result, type);
-  const t = localT || globalTransition;
+  const t = instant ? instantTransition : localT || globalTransition;
   return [motion.animate(elements, props, t)];
 }
 
@@ -598,7 +622,7 @@ interface SplitTextProps {
 
   /** Named variant definitions. Keys are variant names, values are animation targets. */
   variants?: Record<string, VariantDefinition>;
-  /** Initial variant applied instantly (duration: 0) after split. Set to false to skip. */
+  /** Initial variant applied instantly after split (ignores transitions on mount). Set to false to skip. */
   initial?: string | false;
   /** Variant to animate to immediately after split */
   animate?: string;
@@ -1021,10 +1045,18 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
         const type = optionsRef.current?.type;
         const globalTransition = transitionRef.current;
 
-        // 1. Apply initial variant instantly (duration: 0)
+        // 1. Apply initial variant instantly (ignores transitions/delays)
         // Must await .finished so WAAPI commits the values before the next animation reads them
         if (initialVariantRef.current !== false && initialVariantRef.current && vDefs[initialVariantRef.current]) {
-          const initAnimations = animateVariant(motion, splitElements, vDefs[initialVariantRef.current], { duration: 0 }, type, isPresentRef.current);
+          const initAnimations = animateVariant(
+            motion,
+            splitElements,
+            vDefs[initialVariantRef.current],
+            globalTransition,
+            type,
+            isPresentRef.current,
+            { instant: true }
+          );
           await allFinished(initAnimations);
         }
 
@@ -1169,9 +1201,10 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
               motion,
               splitResultRef.current,
               vDefs[initName],
-              { duration: 0 },
+              globalTransition,
               type,
-              isPresent
+              isPresent,
+              { instant: true }
             );
           }
         }

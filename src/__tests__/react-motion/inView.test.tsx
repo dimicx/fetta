@@ -82,6 +82,7 @@ describe("SplitText viewport (react-motion)", () => {
   it("reuses index maps for function variants across hover triggers", async () => {
     const { animate } = await import("motion");
     const animateMock = animate as unknown as ReturnType<typeof vi.fn>;
+    animateMock.mockClear();
     const containsSpy = vi.spyOn(Element.prototype, "contains");
 
     render(
@@ -248,5 +249,40 @@ describe("SplitText viewport (react-motion)", () => {
 
     const lastCall = animateMock.mock.calls[animateMock.mock.calls.length - 1];
     expect(lastCall[1]).toMatchObject(variants.inView);
+  });
+
+  it("applies initial instantly even if variant defines transition", async () => {
+    const { animate } = await import("motion");
+    const animateMock = animate as unknown as ReturnType<typeof vi.fn>;
+
+    render(
+      <SplitText
+        variants={{
+          hidden: {
+            opacity: 0,
+            x: -123,
+            transition: { duration: 0.8, delay: 0.2 },
+          },
+          visible: { opacity: 1, x: 0 },
+        }}
+        initial="hidden"
+        animate="visible"
+        options={{ type: "words" }}
+      >
+        <p>Hello World</p>
+      </SplitText>
+    );
+
+    await waitFor(() => {
+      expect(animateMock).toHaveBeenCalled();
+    });
+
+    const initialCall = animateMock.mock.calls.find(
+      (call) => call[1]?.x === -123
+    );
+
+    expect(initialCall).toBeTruthy();
+    expect(initialCall?.[2]).toMatchObject({ duration: 0 });
+    expect(initialCall?.[2]).not.toHaveProperty("delay");
   });
 });
