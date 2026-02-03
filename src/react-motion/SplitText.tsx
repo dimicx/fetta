@@ -120,6 +120,8 @@ interface ViewportOptions {
   once?: boolean;
   /** How much of the element must be visible. Motion supports "some" | "all" | number. Default: 0 */
   amount?: number | "some" | "all";
+  /** How much visibility is required to consider the element out of view. Default: 0 (fully out) */
+  leave?: number | "some" | "all";
   /** Root margin for IntersectionObserver. Default: "0px" */
   margin?: string;
   /** Root element for IntersectionObserver */
@@ -602,6 +604,8 @@ interface SplitTextProps {
   animate?: string;
   /** Variant to animate to when entering viewport */
   whileInView?: string;
+  /** Variant to animate to when leaving viewport */
+  whileOutOfView?: string;
   /** Variant to animate to on exit when used inside AnimatePresence.
    *  Accepts a variant name or a full variant definition. */
   exit?: string | VariantDefinition | false;
@@ -690,6 +694,7 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
       initial: initialVariant,
       animate: animateVariantName,
       whileInView,
+      whileOutOfView,
       whileScroll,
       exit,
       scroll: scrollProp,
@@ -745,6 +750,7 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
   const initialVariantRef = useRef(initialVariant);
   const animateVariantNameRef = useRef(animateVariantName);
   const whileInViewRef = useRef(whileInView);
+  const whileOutOfViewRef = useRef(whileOutOfView);
   const whileScrollRef = useRef(whileScroll);
   const scrollPropRef = useRef(scrollProp);
   const whileHoverRef = useRef(whileHover);
@@ -769,6 +775,7 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
     initialVariantRef.current = initialVariant;
     animateVariantNameRef.current = animateVariantName;
     whileInViewRef.current = whileInView;
+    whileOutOfViewRef.current = whileOutOfView;
     whileScrollRef.current = whileScroll;
     scrollPropRef.current = scrollProp;
     whileHoverRef.current = whileHover;
@@ -803,13 +810,19 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
   function setupViewportObserver(container: HTMLElement) {
     const vpOptions = viewportRef.current || {};
     const amount = vpOptions.amount ?? 0;
+    const leave = vpOptions.leave ?? 0;
     const threshold = amount === "some" ? 0 : amount === "all" ? 1 : amount;
+    const leaveThreshold =
+      leave === "some" ? 0 : leave === "all" ? 1 : leave;
     const rootMargin = vpOptions.margin ?? "0px";
     const root = vpOptions.root?.current ?? undefined;
 
-    // Use array with both 0 and user's threshold to detect entering at threshold
-    // AND fully exiting (asymmetric: enter at threshold, leave at 0)
-    const thresholds = threshold > 0 ? [0, threshold] : 0;
+    // Use array with 0 + enter + leave to detect transitions at each threshold.
+    const thresholdValues = Array.from(
+      new Set([0, threshold, leaveThreshold])
+    ).sort((a, b) => a - b);
+    const thresholds =
+      thresholdValues.length === 1 ? thresholdValues[0] : thresholdValues;
 
     observerRef.current = new IntersectionObserver(
       (entries) => {
@@ -823,8 +836,17 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
           if (isOnce && hasTriggeredOnceRef.current) return;
           hasTriggeredOnceRef.current = true;
           setIsInView(true);
-        } else if (!entry.isIntersecting && !isOnce) {
-          // Leave: only when element has fully exited viewport
+          return;
+        }
+
+        if (isOnce) return;
+
+        const shouldLeave =
+          leaveThreshold === 0
+            ? !entry.isIntersecting
+            : entry.intersectionRatio <= leaveThreshold;
+
+        if (shouldLeave) {
           setIsInView(false);
         }
       },
@@ -1101,6 +1123,18 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
       } else {
         // Also call onViewportLeave callback if provided
         onViewportLeaveRef.current?.(splitResultRef.current);
+
+        const outVariant = whileOutOfViewRef.current;
+        if (outVariant && vDefs[outVariant] && hasTriggeredOnceRef.current) {
+          animateVariant(
+            motion,
+            splitResultRef.current,
+            vDefs[outVariant],
+            globalTransition,
+            type,
+            isPresent
+          );
+        }
 
         if (!isOnce && resetOnViewportLeaveRef.current) {
           const initName = initialVariantRef.current;

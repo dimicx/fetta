@@ -123,4 +123,61 @@ describe("SplitText viewport (react-motion)", () => {
     expect(countAfterSecond).toBe(countAfterFirst);
     containsSpy.mockRestore();
   });
+
+  it("animates whileOutOfView when ratio falls below leave threshold", async () => {
+    const { animate } = await import("motion");
+    const animateMock = animate as unknown as ReturnType<typeof vi.fn>;
+
+    render(
+      <SplitText
+        variants={{
+          in: { opacity: 1 },
+          out: { opacity: 0 },
+        }}
+        initial={false}
+        whileInView="in"
+        whileOutOfView="out"
+        viewport={{ amount: 0.6, leave: 0.4 }}
+      >
+        <p>Hello World</p>
+      </SplitText>
+    );
+
+    await waitFor(() => {
+      const observer = getLastIntersectionObserver();
+      expect(observer).not.toBeNull();
+    });
+
+    const observer = getLastIntersectionObserver();
+
+    // Enter view (>= amount)
+    act(() => {
+      observer?.trigger([
+        {
+          isIntersecting: true,
+          intersectionRatio: 0.7,
+        },
+      ]);
+    });
+
+    await waitFor(() => {
+      expect(animateMock).toHaveBeenCalled();
+    });
+
+    const callsAfterEnter = animateMock.mock.calls.length;
+
+    // Leave view (< leave threshold) while still intersecting
+    act(() => {
+      observer?.trigger([
+        {
+          isIntersecting: true,
+          intersectionRatio: 0.3,
+        },
+      ]);
+    });
+
+    await waitFor(() => {
+      expect(animateMock.mock.calls.length).toBeGreaterThan(callsAfterEnter);
+    });
+  });
 });

@@ -124,6 +124,50 @@ describe("SplitText viewport", () => {
     });
   });
 
+  it("calls onViewportLeave when ratio drops below leave threshold", async () => {
+    const onViewportLeave = vi.fn();
+
+    render(
+      <SplitText
+        viewport={{ amount: 0.6, leave: 0.4 }}
+        onViewportLeave={onViewportLeave}
+      >
+        <p>Hello World</p>
+      </SplitText>
+    );
+
+    await waitFor(() => {
+      const observer = getLastIntersectionObserver();
+      expect(observer).not.toBeNull();
+    });
+
+    const observer = getLastIntersectionObserver();
+
+    // Enter viewport (>= amount)
+    act(() => {
+      observer?.trigger([
+        {
+          isIntersecting: true,
+          intersectionRatio: 0.7,
+        },
+      ]);
+    });
+
+    // Drop below leave threshold but still intersecting
+    act(() => {
+      observer?.trigger([
+        {
+          isIntersecting: true,
+          intersectionRatio: 0.3,
+        },
+      ]);
+    });
+
+    await waitFor(() => {
+      expect(onViewportLeave).toHaveBeenCalled();
+    });
+  });
+
   it("only triggers onViewportEnter once when once option is true", async () => {
     const onViewportEnter = vi.fn();
 
