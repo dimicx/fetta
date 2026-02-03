@@ -6,9 +6,15 @@ import {
   resetIntersectionObserver,
 } from "../setup";
 
+type HoverHandler = () => void | (() => void);
+let hoverHandler: HoverHandler | null = null;
+
 vi.mock("motion", () => ({
   animate: vi.fn(() => ({ finished: Promise.resolve(), stop: vi.fn() })),
-  hover: vi.fn(() => vi.fn()),
+  hover: vi.fn((_el: Element, handler: HoverHandler) => {
+    hoverHandler = handler;
+    return vi.fn();
+  }),
   scroll: vi.fn(() => vi.fn()),
 }));
 
@@ -21,6 +27,7 @@ import { SplitText } from "../../react-motion/SplitText";
 describe("SplitText viewport (react-motion)", () => {
   beforeEach(() => {
     resetIntersectionObserver();
+    hoverHandler = null;
   });
 
   afterEach(() => {
@@ -70,5 +77,50 @@ describe("SplitText viewport (react-motion)", () => {
       expect(observer).not.toBeNull();
       expect(observer?.elements.size).toBe(1);
     });
+  });
+
+  it("reuses index maps for function variants across hover triggers", async () => {
+    const { animate } = await import("motion");
+    const animateMock = animate as unknown as ReturnType<typeof vi.fn>;
+    const containsSpy = vi.spyOn(Element.prototype, "contains");
+
+    render(
+      <SplitText
+        variants={{
+          hover: (info) => ({ opacity: info.index }),
+        }}
+        whileHover="hover"
+        options={{ type: "chars,words,lines" }}
+      >
+        <p>Hello World</p>
+      </SplitText>
+    );
+
+    await waitFor(() => {
+      expect(hoverHandler).not.toBeNull();
+    });
+
+    act(() => {
+      hoverHandler?.();
+    });
+
+    await waitFor(() => {
+      expect(animateMock).toHaveBeenCalled();
+    });
+
+    const countAfterFirst = containsSpy.mock.calls.length;
+
+    act(() => {
+      hoverHandler?.();
+    });
+
+    await waitFor(() => {
+      expect(animateMock.mock.calls.length).toBeGreaterThan(1);
+    });
+
+    const countAfterSecond = containsSpy.mock.calls.length;
+
+    expect(countAfterSecond).toBe(countAfterFirst);
+    containsSpy.mockRestore();
   });
 });

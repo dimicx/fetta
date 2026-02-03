@@ -247,13 +247,6 @@ function getTargetType(result: SplitTextElements, type?: string): "chars" | "wor
   return "words";
 }
 
-/** Normalize transition options before passing to Motion */
-function resolveTransition(
-  t: AnimationOptions | undefined
-): AnimationOptions | undefined {
-  return t;
-}
-
 /** Separate transition from animation props in a variant definition */
 function extractTransition(
   variant: VariantTarget
@@ -379,6 +372,16 @@ function buildIndexMaps(result: SplitTextElements): IndexMaps {
   return { charToWord, charToLine, wordToLine, charInWord, charCountInWord, charInLine, charCountInLine, wordInLine, wordCountInLine };
 }
 
+const indexMapsCache = new WeakMap<SplitTextElements, IndexMaps>();
+
+function getIndexMaps(result: SplitTextElements): IndexMaps {
+  const cached = indexMapsCache.get(result);
+  if (cached) return cached;
+  const maps = buildIndexMaps(result);
+  indexMapsCache.set(result, maps);
+  return maps;
+}
+
 function buildFnInfo(
   elementType: "chars" | "words" | "lines",
   globalIndex: number,
@@ -476,7 +479,7 @@ function animateVariant(
     const targetType = getTargetType(result, type);
     const elements = result[targetType];
     if (!elements.length) return [];
-    const maps = buildIndexMaps(result);
+    const maps = getIndexMaps(result);
     const items = buildFnItems(elements, targetType, variant, maps, globalTransition, isPresent);
     return items.map((item) =>
       motion.animate(item.element, item.props, item.transition)
@@ -491,7 +494,7 @@ function animateVariant(
 
     if (hasFnKey) {
       // Build index maps once for all function keys
-      const maps = buildIndexMaps(result);
+      const maps = getIndexMaps(result);
       const staticAnimations: MotionAnimation[] = [];
       const fnAnimations: MotionAnimation[] = [];
 
@@ -517,7 +520,7 @@ function animateVariant(
         } else {
           // Static per-type target — use existing path
           const { props, transition: localT } = extractTransition(target);
-          const t = resolveTransition(localT || globalTransition);
+          const t = localT || globalTransition;
           staticAnimations.push(motion.animate(result[key], props, t));
         }
       }
@@ -531,7 +534,7 @@ function animateVariant(
       const target = variant[key];
       if (!target || !result[key].length || typeof target === "function") continue;
       const { props, transition: localT } = extractTransition(target);
-      const t = resolveTransition(localT || globalTransition);
+      const t = localT || globalTransition;
       animations.push(motion.animate(result[key], props, t));
     }
     return animations;
@@ -540,7 +543,7 @@ function animateVariant(
   // Case 4: Flat static variant — unchanged
   const { props, transition: localT } = extractTransition(variant);
   const elements = getTargetElements(result, type);
-  const t = resolveTransition(localT || globalTransition);
+  const t = localT || globalTransition;
   return [motion.animate(elements, props, t)];
 }
 
