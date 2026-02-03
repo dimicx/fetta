@@ -759,6 +759,7 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
   const transitionRef = useRef(transition);
   const exitRef = useRef(exit);
   const isPresentRef = useRef(true);
+  const isInViewRef = useRef(false);
 
   useLayoutEffect(() => {
     onSplitRef.current = onSplit;
@@ -806,6 +807,10 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
   useEffect(() => {
     isPresentRef.current = isPresent;
   }, [isPresent]);
+
+  useEffect(() => {
+    isInViewRef.current = isInView;
+  }, [isInView]);
 
   function setupViewportObserver(container: HTMLElement) {
     const vpOptions = viewportRef.current || {};
@@ -895,8 +900,32 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
     // whileHover
     if (whileHoverRef.current && vDefs[whileHoverRef.current]) {
       const hoverVariantName = whileHoverRef.current;
-      const baseVariantName =
-        animateVariantNameRef.current || initialVariantRef.current;
+
+      const getBaseVariantName = (): string | null => {
+        if (whileScrollRef.current && vDefs[whileScrollRef.current]) {
+          return null;
+        }
+
+        if (isInViewRef.current) {
+          const inViewName = whileInViewRef.current;
+          if (inViewName && vDefs[inViewName]) return inViewName;
+        } else {
+          const outName = whileOutOfViewRef.current;
+          if (outName && vDefs[outName] && hasTriggeredOnceRef.current) {
+            return outName;
+          }
+        }
+
+        const animateName = animateVariantNameRef.current;
+        if (animateName && vDefs[animateName]) return animateName;
+
+        const initName = initialVariantRef.current;
+        if (initName && typeof initName === "string" && vDefs[initName]) {
+          return initName;
+        }
+
+        return null;
+      };
 
       const cancelHover = motion.hover(container, () => {
         onHoverStartRef.current?.();
@@ -913,11 +942,8 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
 
         return () => {
           onHoverEndRef.current?.();
-          if (
-            baseVariantName &&
-            typeof baseVariantName === "string" &&
-            vDefs[baseVariantName]
-          ) {
+          const baseVariantName = getBaseVariantName();
+          if (baseVariantName && vDefs[baseVariantName]) {
             animateVariant(
               motion,
               splitElements,

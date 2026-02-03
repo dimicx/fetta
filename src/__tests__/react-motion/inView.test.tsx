@@ -180,4 +180,73 @@ describe("SplitText viewport (react-motion)", () => {
       expect(animateMock.mock.calls.length).toBeGreaterThan(callsAfterEnter);
     });
   });
+
+  it("reverts hover back to whileInView when in view", async () => {
+    const { animate } = await import("motion");
+    const animateMock = animate as unknown as ReturnType<typeof vi.fn>;
+
+    const variants = {
+      idle: { opacity: 0.2 },
+      inView: { opacity: 0.8 },
+      hover: { opacity: 1 },
+    };
+
+    render(
+      <SplitText
+        variants={variants}
+        initial="idle"
+        whileInView="inView"
+        whileHover="hover"
+        viewport={{ amount: 0 }}
+      >
+        <p>Hello World</p>
+      </SplitText>
+    );
+
+    await waitFor(() => {
+      expect(hoverHandler).not.toBeNull();
+      expect(getLastIntersectionObserver()).not.toBeNull();
+    });
+
+    const observer = getLastIntersectionObserver();
+
+    act(() => {
+      observer?.trigger([
+        {
+          isIntersecting: true,
+          intersectionRatio: 1,
+        },
+      ]);
+    });
+
+    await waitFor(() => {
+      expect(animateMock).toHaveBeenCalled();
+    });
+
+    const callsAfterInView = animateMock.mock.calls.length;
+
+    let hoverEnd: void | (() => void);
+    act(() => {
+      hoverEnd = hoverHandler?.();
+    });
+
+    await waitFor(() => {
+      expect(animateMock.mock.calls.length).toBeGreaterThan(callsAfterInView);
+    });
+
+    const callsAfterHoverStart = animateMock.mock.calls.length;
+
+    act(() => {
+      if (typeof hoverEnd === "function") hoverEnd();
+    });
+
+    await waitFor(() => {
+      expect(animateMock.mock.calls.length).toBeGreaterThan(
+        callsAfterHoverStart
+      );
+    });
+
+    const lastCall = animateMock.mock.calls[animateMock.mock.calls.length - 1];
+    expect(lastCall[1]).toMatchObject(variants.inView);
+  });
 });
