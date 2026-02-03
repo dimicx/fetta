@@ -53,15 +53,19 @@ function reapplyInitialStyles(
     const styles = isFn ? style(el, i) : style;
 
     for (const [key, value] of Object.entries(styles)) {
-      if (typeof value !== "string") continue;
+      if (value == null) continue;
       if (key === "cssText") {
-        el.style.cssText = value;
+        if (typeof value === "string") {
+          el.style.cssText = value;
+        }
         continue;
       }
+      if (typeof value !== "string" && typeof value !== "number") continue;
+      const cssValue = typeof value === "number" ? String(value) : value;
       const cssKey = key.startsWith("--")
         ? key
         : key.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`);
-      el.style.setProperty(cssKey, value);
+      el.style.setProperty(cssKey, cssValue);
     }
   }
 }

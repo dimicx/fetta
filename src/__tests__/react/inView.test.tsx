@@ -301,4 +301,57 @@ describe("SplitText viewport", () => {
     // Observer should not have any elements
     expect(observer?.elements.size ?? 0).toBe(0);
   });
+
+  it("reapplies numeric initialStyles on viewport leave", async () => {
+    const { container } = render(
+      <SplitText
+        viewport={{}}
+        resetOnViewportLeave
+        initialStyles={{ chars: { opacity: 0 } }}
+        onViewportEnter={({ chars }) => {
+          if (chars[0]) chars[0].style.opacity = "1";
+        }}
+      >
+        <p>Hello</p>
+      </SplitText>
+    );
+
+    await waitFor(() => {
+      const observer = getLastIntersectionObserver();
+      expect(observer).not.toBeNull();
+    });
+
+    const observer = getLastIntersectionObserver();
+
+    // Enter viewport to mutate styles
+    act(() => {
+      observer?.trigger([
+        {
+          isIntersecting: true,
+          intersectionRatio: 1,
+        },
+      ]);
+    });
+
+    const char = container.querySelector(".split-char") as HTMLElement | null;
+
+    await waitFor(() => {
+      expect(char).not.toBeNull();
+      expect(char?.style.opacity).toBe("1");
+    });
+
+    // Leave viewport to reapply initial styles
+    act(() => {
+      observer?.trigger([
+        {
+          isIntersecting: false,
+          intersectionRatio: 0,
+        },
+      ]);
+    });
+
+    await waitFor(() => {
+      expect(char?.style.opacity).toBe("0");
+    });
+  });
 });
