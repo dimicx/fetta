@@ -17,9 +17,9 @@
       "types": "./dist/react.d.ts",
       "import": "./dist/react.js"
     },
-    "./react-motion": {
-      "types": "./dist/react-motion.d.ts",
-      "import": "./dist/react-motion.js"
+    "./motion": {
+      "types": "./dist/motion.d.ts",
+      "import": "./dist/motion.js"
     }
   },
   "main": "./dist/index.js",

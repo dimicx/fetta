@@ -111,7 +111,7 @@ import { SplitText } from 'fetta/react';
 For Motion variants:
 
 ```tsx
-import { SplitText } from 'fetta/react-motion';
+import { SplitText } from 'fetta/motion';
 ```
 
 Animate on exit with Motion's `AnimatePresence`:

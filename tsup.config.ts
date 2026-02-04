@@ -4,7 +4,7 @@ export default defineConfig({
   entry: {
     index: "src/index.ts",
     react: "src/react/index.ts",
-    "react-motion": "src/react-motion/index.ts",
+    motion: "src/motion/index.ts",
   },
   format: ["esm"],
   dts: true,
