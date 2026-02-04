@@ -4,6 +4,8 @@
  * applies margin compensation, and detects lines based on rendered positions.
  */
 
+import { renderSplitTextData } from "../internal/splitTextRender";
+
 // Tags whose implicit ARIA role allows aria-label (headings, landmarks, interactive elements).
 // Other elements (span, div, p, etc.) use a sr-only copy instead.
 const ARIA_LABEL_ALLOWED_TAGS = new Set([
@@ -103,6 +105,196 @@ export interface SplitTextResult {
   lines: HTMLSpanElement[];
   /** Revert the element to its original HTML and cleanup all observers/timers */
   revert: () => void;
+}
+
+// ---------------------------------------------------------------------------
+// Data-only split output (internal)
+// ---------------------------------------------------------------------------
+
+type SplitRole = "char" | "word" | "line";
+
+export type SplitTextDataNode =
+  | {
+      type: "text";
+      text: string;
+    }
+  | {
+      type: "element";
+      tag: string;
+      attrs: Record<string, string>;
+      children: SplitTextDataNode[];
+      split?: SplitRole;
+    };
+
+export interface SplitTextData {
+  nodes: SplitTextDataNode[];
+  meta: {
+    text: string;
+    type: SplitTextOptions["type"];
+    mask?: SplitTextOptions["mask"];
+    charClass: string;
+    wordClass: string;
+    lineClass: string;
+    propIndex: boolean;
+    useAriaLabel: boolean;
+    ariaLabel: string | null;
+  };
+}
+
+/**
+ * Internal data-only splitter.
+ *
+ * Performs a temporary split for measurement, serializes the result, and
+ * restores the element to its original HTML/ARIA/styles.
+ */
+export function splitTextData(
+  element: HTMLElement,
+  {
+    type = "chars,words,lines",
+    charClass = "split-char",
+    wordClass = "split-word",
+    lineClass = "split-line",
+    mask,
+    propIndex = false,
+    disableKerning = false,
+    initialStyles,
+    initialClasses,
+  }: SplitTextOptions = {}
+): SplitTextData {
+  if (!(element instanceof HTMLElement)) {
+    throw new Error("splitTextData: element must be an HTMLElement");
+  }
+
+  const text = element.textContent?.trim() ?? "";
+  if (!text) {
+    console.warn("splitTextData: element has no text content");
+    return {
+      nodes: [],
+      meta: {
+        text: "",
+        type,
+        mask,
+        charClass,
+        wordClass,
+        lineClass,
+        propIndex,
+        useAriaLabel: false,
+        ariaLabel: null,
+      },
+    };
+  }
+
+  const originalHTML = element.innerHTML;
+  const originalAriaLabel = element.getAttribute("aria-label");
+  const originalStyle = element.getAttribute("style");
+
+  // Parse type option into flags
+  let splitChars = type.includes("chars");
+  let splitWords = type.includes("words");
+  let splitLines = type.includes("lines");
+
+  if (!splitChars && !splitWords && !splitLines) {
+    console.warn(
+      'splitTextData: type must include at least one of: chars, words, lines. Defaulting to "chars,words,lines".'
+    );
+    splitChars = splitWords = splitLines = true;
+  }
+
+  // If splitting chars, force disable ligatures for consistency
+  if (splitChars) {
+    element.style.fontVariantLigatures = "none";
+  }
+
+  const trackAncestors = hasInlineDescendants(element);
+  const measuredWords = collectTextStructure(element, trackAncestors);
+
+  // Perform the split
+  const useAriaLabel =
+    !trackAncestors &&
+    ARIA_LABEL_ALLOWED_TAGS.has(element.tagName.toLowerCase());
+
+  performSplit(
+    element,
+    measuredWords,
+    charClass,
+    wordClass,
+    lineClass,
+    splitChars,
+    splitWords,
+    splitLines,
+    {
+      propIndex,
+      mask,
+      ariaHidden: useAriaLabel,
+      disableKerning,
+      initialStyles,
+      initialClasses,
+    }
+  );
+
+  // Accessibility: mirror core split behavior
+  if (trackAncestors) {
+    injectSrOnlyStyles();
+
+    const visualWrapper = document.createElement("span");
+    visualWrapper.setAttribute("aria-hidden", "true");
+    visualWrapper.dataset.fettaVisual = "true";
+
+    while (element.firstChild) {
+      visualWrapper.appendChild(element.firstChild);
+    }
+    element.appendChild(visualWrapper);
+    element.appendChild(createScreenReaderCopy(originalHTML));
+  } else if (useAriaLabel) {
+    if (originalAriaLabel === null) {
+      element.setAttribute("aria-label", text);
+    }
+  } else {
+    injectSrOnlyStyles();
+
+    const visualWrapper = document.createElement("span");
+    visualWrapper.setAttribute("aria-hidden", "true");
+    visualWrapper.dataset.fettaVisual = "true";
+
+    while (element.firstChild) {
+      visualWrapper.appendChild(element.firstChild);
+    }
+    element.appendChild(visualWrapper);
+    element.appendChild(createScreenReaderCopy(originalHTML));
+  }
+
+  const nodes = serializeChildren(element, { charClass, wordClass, lineClass });
+  const ariaLabel = element.getAttribute("aria-label");
+
+  // Restore original element state
+  element.innerHTML = originalHTML;
+
+  if (originalAriaLabel !== null) {
+    element.setAttribute("aria-label", originalAriaLabel);
+  } else {
+    element.removeAttribute("aria-label");
+  }
+
+  if (originalStyle !== null) {
+    element.setAttribute("style", originalStyle);
+  } else {
+    element.removeAttribute("style");
+  }
+
+  return {
+    nodes,
+    meta: {
+      text,
+      type,
+      mask,
+      charClass,
+      wordClass,
+      lineClass,
+      propIndex,
+      useAriaLabel,
+      ariaLabel,
+    },
+  };
 }
 
 /**
@@ -468,6 +660,75 @@ function wrapInAncestors(content: Node, ancestors: AncestorInfo[]): Node {
     wrapped = wrapper;
   }
   return wrapped;
+}
+
+// ---------------------------------------------------------------------------
+// Data serialization helpers (internal)
+// ---------------------------------------------------------------------------
+
+function hasAllClasses(element: Element, className: string | undefined): boolean {
+  if (!className) return false;
+  const tokens = className.split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) return false;
+  return tokens.every((token) => element.classList.contains(token));
+}
+
+function getSplitRole(
+  element: Element,
+  classInfo: { charClass: string; wordClass: string; lineClass: string }
+): SplitRole | undefined {
+  if (hasAllClasses(element, classInfo.charClass)) return "char";
+  if (hasAllClasses(element, classInfo.wordClass)) return "word";
+  if (hasAllClasses(element, classInfo.lineClass)) return "line";
+  return undefined;
+}
+
+function serializeNode(
+  node: Node,
+  classInfo: { charClass: string; wordClass: string; lineClass: string }
+): SplitTextDataNode | null {
+  if (node.nodeType === Node.TEXT_NODE) {
+    return {
+      type: "text",
+      text: node.textContent ?? "",
+    };
+  }
+
+  if (node.nodeType !== Node.ELEMENT_NODE) return null;
+
+  const element = node as Element;
+  const attrs: Record<string, string> = {};
+  for (const attr of Array.from(element.attributes)) {
+    attrs[attr.name] = attr.value;
+  }
+
+  const children: SplitTextDataNode[] = [];
+  element.childNodes.forEach((child) => {
+    const serialized = serializeNode(child, classInfo);
+    if (serialized) children.push(serialized);
+  });
+
+  const split = getSplitRole(element, classInfo);
+
+  return {
+    type: "element",
+    tag: element.tagName.toLowerCase(),
+    attrs,
+    children,
+    split,
+  };
+}
+
+function serializeChildren(
+  element: Element,
+  classInfo: { charClass: string; wordClass: string; lineClass: string }
+): SplitTextDataNode[] {
+  const nodes: SplitTextDataNode[] = [];
+  element.childNodes.forEach((child) => {
+    const serialized = serializeNode(child, classInfo);
+    if (serialized) nodes.push(serialized);
+  });
+  return nodes;
 }
 
 /**
@@ -1478,15 +1739,18 @@ export function splitText(
 
   // Store original HTML for revert
   const originalHTML = element.innerHTML;
+  const originalAriaLabel = element.getAttribute("aria-label");
 
   // Parse type option into flags
-  let splitChars = type.includes('chars');
-  let splitWords = type.includes('words');
-  let splitLines = type.includes('lines');
+  let splitChars = type.includes("chars");
+  let splitWords = type.includes("words");
+  let splitLines = type.includes("lines");
 
   // Validate at least one type is selected
   if (!splitChars && !splitWords && !splitLines) {
-    console.warn('splitText: type must include at least one of: chars, words, lines. Defaulting to "chars,words,lines".');
+    console.warn(
+      'splitText: type must include at least one of: chars, words, lines. Defaulting to "chars,words,lines".'
+    );
     splitChars = splitWords = splitLines = true;
   }
 
@@ -1500,78 +1764,43 @@ export function splitText(
   let currentChars: HTMLSpanElement[] = [];
   let currentWords: HTMLSpanElement[] = [];
   let currentLines: HTMLSpanElement[] = [];
-  let originalAriaLabel: string | null = null;
+  let useAriaLabel = false;
 
-  // If splitting chars, force disable ligatures for consistency
-  // Ligatures can't span multiple char elements anyway
-  if (splitChars) {
-    element.style.fontVariantLigatures = "none";
-  }
+  const applyData = (data: SplitTextData) => {
+    const rendered = renderSplitTextData(element, data);
+    currentChars = rendered.chars;
+    currentWords = rendered.words;
+    currentLines = rendered.lines;
+    useAriaLabel = data.meta.useAriaLabel;
 
+    if (useAriaLabel) {
+      if (data.meta.ariaLabel != null) {
+        element.setAttribute("aria-label", data.meta.ariaLabel);
+      } else {
+        element.removeAttribute("aria-label");
+      }
+    } else if (originalAriaLabel !== null) {
+      element.setAttribute("aria-label", originalAriaLabel);
+    }
 
-  // Check once if we need to track nested inline elements (performance optimization)
-  const trackAncestors = hasInlineDescendants(element);
+    // If splitting chars, force disable ligatures for consistency
+    if (splitChars) {
+      element.style.fontVariantLigatures = "none";
+    }
+  };
 
-  // Collect text structure (kerning is measured separately in performSplit)
-  const measuredWords = collectTextStructure(element, trackAncestors);
-
-  // Perform the split
-  // aria-hidden on individual spans only when using aria-label (elements that support it)
-  // Otherwise, a visual wrapper handles aria-hidden for the whole group
-  const useAriaLabel = !trackAncestors && ARIA_LABEL_ALLOWED_TAGS.has(element.tagName.toLowerCase());
-  const { chars, words, lines } = performSplit(
-    element,
-    measuredWords,
+  const initialData = splitTextData(element, {
+    type,
     charClass,
     wordClass,
     lineClass,
-    splitChars,
-    splitWords,
-    splitLines,
-    { propIndex, mask, ariaHidden: useAriaLabel, disableKerning, initialStyles, initialClasses }
-  );
-
-  // Store initial result
-  currentChars = chars;
-  currentWords = words;
-  currentLines = lines;
-
-  // Accessibility: Set up screen reader access based on content complexity
-  if (trackAncestors) {
-    // Complex content with nested elements: wrap in aria-hidden + add sr-only copy
-    injectSrOnlyStyles();
-
-    const visualWrapper = document.createElement('span');
-    visualWrapper.setAttribute('aria-hidden', 'true');
-    visualWrapper.dataset.fettaVisual = 'true';
-
-    while (element.firstChild) {
-      visualWrapper.appendChild(element.firstChild);
-    }
-    element.appendChild(visualWrapper);
-    element.appendChild(createScreenReaderCopy(originalHTML));
-  } else if (useAriaLabel) {
-    // Headings, landmarks, etc. support aria-label natively
-    // Preserve any author-provided aria-label
-    originalAriaLabel = element.getAttribute("aria-label");
-    if (originalAriaLabel === null) {
-      element.setAttribute("aria-label", text);
-    }
-  } else {
-    // Generic elements (span, div, p, etc.) don't allow aria-label,
-    // so use the same sr-only copy approach as nested elements
-    injectSrOnlyStyles();
-
-    const visualWrapper = document.createElement('span');
-    visualWrapper.setAttribute('aria-hidden', 'true');
-    visualWrapper.dataset.fettaVisual = 'true';
-
-    while (element.firstChild) {
-      visualWrapper.appendChild(element.firstChild);
-    }
-    element.appendChild(visualWrapper);
-    element.appendChild(createScreenReaderCopy(originalHTML));
-  }
+    mask,
+    propIndex,
+    disableKerning,
+    initialStyles,
+    initialClasses,
+  });
+  applyData(initialData);
 
   // Cleanup function to disconnect observers and timers
   const dispose = () => {
@@ -1655,46 +1884,26 @@ export function splitText(
         // Re-split after layout is complete
         requestAnimationFrame(() => {
           if (!isActive) return;
-
-          // Re-measure and re-split (trackAncestors is stable since originalHTML doesn't change)
-          const newMeasuredWords = collectTextStructure(element, trackAncestors);
-          const result = performSplit(
-            element,
-            newMeasuredWords,
+          const nextData = splitTextData(element, {
+            type,
             charClass,
             wordClass,
             lineClass,
-            splitChars,
-            splitWords,
-            splitLines,
-            { propIndex, mask, ariaHidden: useAriaLabel, disableKerning, initialStyles, initialClasses }
-          );
-
-          // Update current result
-          currentChars = result.chars;
-          currentWords = result.words;
-          currentLines = result.lines;
-
-          // Re-apply accessibility structure
-          if (trackAncestors || !useAriaLabel) {
-            const visualWrapper = document.createElement('span');
-            visualWrapper.setAttribute('aria-hidden', 'true');
-            visualWrapper.dataset.fettaVisual = 'true';
-
-            while (element.firstChild) {
-              visualWrapper.appendChild(element.firstChild);
-            }
-            element.appendChild(visualWrapper);
-            element.appendChild(createScreenReaderCopy(originalHTML));
-          }
+            mask,
+            propIndex,
+            disableKerning,
+            initialStyles,
+            initialClasses,
+          });
+          applyData(nextData);
 
           // Only trigger callback if lines actually changed
-          const newFingerprint = getLineFingerprint(result.lines);
+          const newFingerprint = getLineFingerprint(currentLines);
           if (onResize && newFingerprint !== previousFingerprint) {
             onResize({
-              chars: result.chars,
-              words: result.words,
-              lines: result.lines,
+              chars: currentChars,
+              words: currentWords,
+              lines: currentLines,
             });
           }
         });
