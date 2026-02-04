@@ -1649,12 +1649,34 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
       return types;
     }, [variantsByType, exitLabel]);
 
+    const revertTypes = useMemo(() => {
+      const animateKey = typeof animateLabel === "string" ? animateLabel : null;
+      if (!animateKey) return [] as SplitTypeKey[];
+      const types: SplitTypeKey[] = [];
+      for (const key of ELEMENT_TYPE_KEYS) {
+        const defs = (variantsByType as Partial<
+          Record<SplitTypeKey, Record<string, PerTypeVariant>>
+        >)[key];
+        if (defs && animateKey in defs) {
+          types.push(key);
+        }
+      }
+      return types;
+    }, [variantsByType, animateLabel]);
+
     const exitTotalCount = useMemo(() => {
       return exitTypes.reduce((sum, type) => {
         const count = variantInfo.counts[type] ?? 0;
         return sum + count;
       }, 0);
     }, [exitTypes, variantInfo.counts]);
+
+    const revertTotalCount = useMemo(() => {
+      return revertTypes.reduce((sum, type) => {
+        const count = variantInfo.counts[type] ?? 0;
+        return sum + count;
+      }, 0);
+    }, [revertTypes, variantInfo.counts]);
 
     const parentVariants = useMemo(() => {
       if (!resolvedVariants) return undefined;
@@ -1694,6 +1716,10 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
       total: 0,
       completed: 0,
       session: 0,
+    });
+    const revertTrackerRef = useRef({
+      total: 0,
+      completed: 0,
     });
 
     useEffect(() => {
@@ -1859,24 +1885,42 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
       hasVariants &&
       !!animateLabel &&
       !whileInView &&
+      !needsViewport &&
       !whileScroll &&
       revertOnComplete;
 
     const pendingRevertRef = useRef<string | null>(null);
     useEffect(() => {
-      pendingRevertRef.current = shouldRevertOnComplete
-        ? animateLabel ?? null
-        : null;
-    }, [shouldRevertOnComplete, animateLabel]);
+      if (!shouldRevertOnComplete) {
+        pendingRevertRef.current = null;
+        revertTrackerRef.current.total = 0;
+        revertTrackerRef.current.completed = 0;
+        return;
+      }
+      pendingRevertRef.current = animateLabel ?? null;
+      const tracker = revertTrackerRef.current;
+      tracker.total = revertTotalCount;
+      tracker.completed = 0;
 
-    const handleAnimationComplete = useCallback(
-      (definition?: string | VariantTarget) => {
-        if (!pendingRevertRef.current) return;
-        if (typeof definition === "string" && definition !== pendingRevertRef.current) {
-          return;
-        }
+      if (revertTotalCount === 0) {
         splitResultRef.current?.revert();
         pendingRevertRef.current = null;
+      }
+    }, [shouldRevertOnComplete, animateLabel, revertTotalCount]);
+
+    const handleRevertComplete = useCallback(
+      (definition?: string | VariantTarget) => {
+        const label = pendingRevertRef.current;
+        if (!label) return;
+        if (typeof definition === "string" && definition !== label) {
+          return;
+        }
+        const tracker = revertTrackerRef.current;
+        tracker.completed += 1;
+        if (tracker.completed >= tracker.total) {
+          splitResultRef.current?.revert();
+          pendingRevertRef.current = null;
+        }
       },
       []
     );
@@ -2081,6 +2125,23 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
           typeof exitLabel === "string" &&
           variantsForType &&
           exitLabel in variantsForType;
+        const animateKey = typeof animateLabel === "string" ? animateLabel : null;
+        const needsRevertTracking =
+          shouldRevertOnComplete &&
+          !!animateKey &&
+          variantsForType &&
+          animateKey in variantsForType;
+        const onCompleteHandler =
+          needsExitTracking || needsRevertTracking
+            ? (definition?: string | VariantTarget) => {
+                if (needsExitTracking) {
+                  handleExitComplete(definition);
+                }
+                if (needsRevertTracking) {
+                  handleRevertComplete(definition);
+                }
+              }
+            : undefined;
 
         return createElement(
           MotionTag,
@@ -2092,9 +2153,7 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
             initial: childInitial,
             animate: childAnimate,
             exit: exitProp,
-            onAnimationComplete: needsExitTracking
-              ? handleExitComplete
-              : undefined,
+            onAnimationComplete: onCompleteHandler,
           },
           renderNodes(node.children, key)
         );
@@ -2152,9 +2211,6 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
         transition: wrapperTransition,
         onHoverStart: handleHoverStart,
         onHoverEnd: handleHoverEnd,
-        onAnimationComplete: (definition?: string | VariantTarget) => {
-          handleAnimationComplete(definition);
-        },
       },
       child
     );
