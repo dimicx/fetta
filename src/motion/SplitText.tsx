@@ -1066,9 +1066,9 @@ interface SplitTextProps {
   /** Named variant definitions. Keys are variant names, values are animation targets. */
   variants?: Record<string, VariantDefinition>;
   /** Initial variant applied instantly after split (ignores transitions on mount). Set to false to skip. */
-  initial?: string | false;
+  initial?: string | VariantDefinition | false;
   /** Variant to animate to immediately after split */
-  animate?: string;
+  animate?: string | VariantDefinition;
   /** Variant to animate to when entering viewport */
   whileInView?: string;
   /** Variant to animate to when leaving viewport */
@@ -1338,6 +1338,55 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
       viewport
     );
 
+    const inlineInitialVariant =
+      initialVariant != null &&
+      initialVariant !== false &&
+      typeof initialVariant !== "string";
+    const inlineAnimateVariant =
+      animateVariantName != null && typeof animateVariantName !== "string";
+    const inlineExitVariant =
+      exit != null && exit !== false && typeof exit !== "string";
+    const resolvedVariants = useMemo(() => {
+      if (!variants && !inlineInitialVariant && !inlineAnimateVariant && !inlineExitVariant) {
+        return variants;
+      }
+      const merged: Record<string, VariantDefinition> = {
+        ...(variants ?? {}),
+      };
+      if (inlineInitialVariant) {
+        merged.__fetta_initial__ = initialVariant as VariantDefinition;
+      }
+      if (inlineAnimateVariant) {
+        merged.__fetta_animate__ = animateVariantName as VariantDefinition;
+      }
+      if (inlineExitVariant) {
+        merged.__fetta_exit__ = exit as VariantDefinition;
+      }
+      return merged;
+    }, [
+      variants,
+      inlineInitialVariant,
+      inlineAnimateVariant,
+      inlineExitVariant,
+      initialVariant,
+      animateVariantName,
+      exit,
+    ]);
+
+    const initialLabel: string | false | undefined = inlineInitialVariant
+      ? "__fetta_initial__"
+      : (initialVariant as string | false | undefined);
+    const animateLabel: string | undefined = inlineAnimateVariant
+      ? "__fetta_animate__"
+      : (animateVariantName as string | undefined);
+    const exitLabel: string | false | undefined = inlineExitVariant
+      ? "__fetta_exit__"
+      : exit;
+    const hasVariants = !!(
+      resolvedVariants && Object.keys(resolvedVariants).length
+    );
+    const hasHover = !!(whileHover && hasVariants);
+
     // Stable refs for callbacks and options
     const onSplitRef = useRef(onSplit);
     const onResizeRef = useRef(onResize);
@@ -1349,7 +1398,7 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
     const initialStylesRef = useRef(initialStyles);
     const initialClassesRef = useRef(initialClasses);
     const resetOnViewportLeaveRef = useRef(resetOnViewportLeave);
-    const initialVariantRef = useRef(initialVariant);
+    const initialVariantRef = useRef(initialLabel);
     const whileInViewRef = useRef(whileInView);
     const whileOutOfViewRef = useRef(whileOutOfView);
     const debugPresence =
@@ -1367,7 +1416,7 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
       initialStylesRef.current = initialStyles;
       initialClassesRef.current = initialClasses;
       resetOnViewportLeaveRef.current = resetOnViewportLeave;
-      initialVariantRef.current = initialVariant;
+      initialVariantRef.current = initialLabel;
       whileInViewRef.current = whileInView;
       whileOutOfViewRef.current = whileOutOfView;
     });
@@ -1405,27 +1454,6 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
     const lineFingerprintRef = useRef<string | null>(null);
     const originalHTMLRef = useRef<string | null>(null);
     const pendingResizeRef = useRef(false);
-
-    const inlineExitVariant =
-      exit != null && exit !== false && typeof exit !== "string";
-    const resolvedVariants = useMemo(() => {
-      if (!variants && !inlineExitVariant) return variants;
-      const merged: Record<string, VariantDefinition> = {
-        ...(variants ?? {}),
-      };
-      if (inlineExitVariant) {
-        merged.__fetta_exit__ = exit as VariantDefinition;
-      }
-      return merged;
-    }, [variants, inlineExitVariant, exit]);
-
-    const exitLabel: string | false | undefined = inlineExitVariant
-      ? "__fetta_exit__"
-      : exit;
-    const hasVariants = !!(
-      resolvedVariants && Object.keys(resolvedVariants).length
-    );
-    const hasHover = !!(whileHover && hasVariants);
 
     useLayoutEffect(() => {
       const element = containerRef.current?.firstElementChild;
@@ -1651,7 +1679,7 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
     }, [resolvedVariants, orchestrationTransition]);
 
     const [activeVariant, setActiveVariant] = useState<string | undefined>(
-      animateVariantName
+      animateLabel
     );
     const [isHovered, setIsHovered] = useState(false);
 
@@ -1745,7 +1773,7 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
         }
       }
 
-      const animateName = animateVariantName;
+      const animateName = animateLabel;
       if (animateName && vDefs[animateName]) {
         setActiveVariant(animateName);
       }
@@ -1753,7 +1781,7 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
       isInView,
       hasVariants,
       resolvedVariants,
-      animateVariantName,
+      animateLabel,
       whileScroll,
       isPresent,
     ]);
@@ -1829,7 +1857,7 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
 
     const shouldRevertOnComplete =
       hasVariants &&
-      !!animateVariantName &&
+      !!animateLabel &&
       !whileInView &&
       !whileScroll &&
       revertOnComplete;
@@ -1837,9 +1865,9 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
     const pendingRevertRef = useRef<string | null>(null);
     useEffect(() => {
       pendingRevertRef.current = shouldRevertOnComplete
-        ? animateVariantName ?? null
+        ? animateLabel ?? null
         : null;
-    }, [shouldRevertOnComplete, animateVariantName]);
+    }, [shouldRevertOnComplete, animateLabel]);
 
     const handleAnimationComplete = useCallback(
       (definition?: string | VariantTarget) => {
@@ -1999,17 +2027,17 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
     const shouldInheritVariants =
       hasOrchestrationVariants || !!whileScroll || hasHover;
     const childInitial =
-      shouldInheritVariants || initialVariant === undefined
+      shouldInheritVariants || initialLabel === undefined
         ? undefined
-        : initialVariant;
+        : initialLabel;
     const childAnimate =
       shouldInheritVariants || !hasVariants || !isReady
         ? undefined
         : displayVariant;
     const wrapperVariants = shouldInheritVariants ? parentVariants : undefined;
     const wrapperInitial =
-      shouldInheritVariants && initialVariant !== undefined
-        ? initialVariant
+      shouldInheritVariants && initialLabel !== undefined
+        ? initialLabel
         : undefined;
     const wrapperAnimate =
       shouldInheritVariants && hasVariants && isReady
