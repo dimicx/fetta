@@ -199,6 +199,7 @@ type VariantDefinition =
 
 type SplitTypeKey = "chars" | "words" | "lines";
 type SplitRole = "char" | "word" | "line";
+type DelayScope = "global" | "local";
 
 const ELEMENT_TYPE_KEYS: SplitTypeKey[] = ["chars", "words", "lines"];
 
@@ -252,7 +253,8 @@ function stripOrchestration(
 
 function withDefaultTransition(
   target: PerTypeVariant,
-  defaultTransition?: AnimationOptions
+  defaultTransition: AnimationOptions | undefined,
+  delayScope: DelayScope
 ): PerTypeVariant {
   const needsDelayResolution = (transition?: AnimationOptions): boolean => {
     const delay = transition?.delay as unknown;
@@ -266,7 +268,11 @@ function withDefaultTransition(
     info: VariantInfo
   ): number | undefined => {
     if (typeof delay === "function") {
-      const value = delay(info.index, info.count);
+      const [index, count] =
+        delayScope === "local"
+          ? [info.index, info.count]
+          : [info.globalIndex, info.globalCount];
+      const value = delay(index, count);
       return Number.isFinite(value) ? value : undefined;
     }
     if (typeof delay === "number") {
@@ -360,7 +366,8 @@ function getTargetType(
 function buildVariantsByType(
   variants: Record<string, VariantDefinition> | undefined,
   targetType: SplitTypeKey,
-  childDefaultTransition?: AnimationOptions
+  childDefaultTransition: AnimationOptions | undefined,
+  delayScope: DelayScope
 ): Partial<Record<SplitTypeKey, Record<string, PerTypeVariant>>> {
   if (!variants) return {};
 
@@ -376,7 +383,11 @@ function buildVariantsByType(
       for (const key of ELEMENT_TYPE_KEYS) {
         const perType = def[key];
         if (!perType) continue;
-        const entry = withDefaultTransition(perType, defaultTransition);
+        const entry = withDefaultTransition(
+          perType,
+          defaultTransition,
+          delayScope
+        );
         if (!result[key]) result[key] = {};
         result[key]![name] = entry;
       }
@@ -384,7 +395,7 @@ function buildVariantsByType(
     }
 
     if (targetType) {
-      const entry = withDefaultTransition(def, defaultTransition);
+      const entry = withDefaultTransition(def, defaultTransition, delayScope);
       if (!result[targetType]) result[targetType] = {};
       result[targetType]![name] = entry;
     }
@@ -863,7 +874,8 @@ function buildFnItems(
   fn: VariantResolver,
   maps: IndexMapsDom,
   transition: AnimationOptions | undefined,
-  isPresent: boolean
+  isPresent: boolean,
+  delayScope: DelayScope
 ): FnAnimationItem[] {
   const t = transition;
   const { delay: outerDelay, duration, ...rest } = t || {};
@@ -880,7 +892,10 @@ function buildFnItems(
     const rawDelay = merged.delay ?? outerDelay;
     const resolvedDelay =
       typeof rawDelay === "function"
-        ? rawDelay(info.index, info.count)
+        ? rawDelay(
+            delayScope === "local" ? info.index : info.globalIndex,
+            delayScope === "local" ? info.count : info.globalCount
+          )
         : rawDelay;
     if (resolvedDelay != null) {
       merged = { ...merged, delay: resolvedDelay };
@@ -904,7 +919,8 @@ function animateVariant(
   variant: VariantDefinition,
   globalTransition: AnimationOptions | undefined,
   type?: string,
-  isPresent = true
+  isPresent = true,
+  delayScope: DelayScope = "global"
 ): MotionAnimation[] {
   if (typeof variant === "function") {
     const targetType = getTargetTypeForElements(result, type);
@@ -917,7 +933,8 @@ function animateVariant(
       variant,
       maps,
       globalTransition,
-      isPresent
+      isPresent,
+      delayScope
     );
     return items.map((item) =>
       animate(item.element, item.props, item.transition)
@@ -946,7 +963,8 @@ function animateVariant(
             target,
             maps,
             localTransition,
-            isPresent
+            isPresent,
+            delayScope
           );
           fnAnimations.push(
             ...items.map((item) =>
@@ -1050,6 +1068,8 @@ interface SplitTextProps {
   /** Global transition options for variant animations.
    *  Precedence: per-element fn return > per-variant transition > this global transition. */
   transition?: AnimationOptions;
+  /** Controls how delay functions are resolved. "global" uses globalIndex/globalCount, "local" uses index/count. */
+  delayScope?: DelayScope;
 }
 
 function parseStyleValue(styleText: string): React.CSSProperties {
@@ -1194,6 +1214,7 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
       onHoverStart,
       onHoverEnd,
       transition,
+      delayScope = "global",
     },
     forwardedRef
   ) {
@@ -1419,9 +1440,10 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
         buildVariantsByType(
           resolvedVariants,
           targetType,
-          childDefaultTransition
+          childDefaultTransition,
+          delayScope
         ),
-      [resolvedVariants, targetType, childDefaultTransition]
+      [resolvedVariants, targetType, childDefaultTransition, delayScope]
     );
 
     const parentVariants = useMemo(() => {
@@ -1674,7 +1696,8 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
         def,
         transition,
         optionsRef.current?.type,
-        isPresent
+        isPresent,
+        delayScope
       );
 
       const scrollOpts = scrollProp;
@@ -1690,7 +1713,15 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
       return () => {
         for (const cleanup of cleanups) cleanup();
       };
-    }, [data, isPresent, whileScroll, resolvedVariants, transition, scrollProp]);
+    }, [
+      data,
+      isPresent,
+      whileScroll,
+      resolvedVariants,
+      transition,
+      scrollProp,
+      delayScope,
+    ]);
 
     if (!isValidElement(children)) {
       console.error("SplitText: children must be a single valid React element");
