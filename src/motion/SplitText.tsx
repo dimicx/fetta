@@ -15,6 +15,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useId,
 } from "react";
 import type { SplitTextData, SplitTextDataNode } from "../core/splitText";
 
@@ -251,6 +252,24 @@ function stripOrchestration(
   return Object.keys(stripped).length ? stripped : undefined;
 }
 
+function hasOrchestration(transition?: AnimationOptions): boolean {
+  if (!transition) return false;
+  for (const key of ORCHESTRATION_KEYS) {
+    if (key in transition) return true;
+  }
+  return false;
+}
+
+function getVariantTransition(
+  def: VariantDefinition
+): AnimationOptions | undefined {
+  if (typeof def !== "object" || def == null) return undefined;
+  if ("transition" in def) {
+    return (def as { transition?: AnimationOptions }).transition;
+  }
+  return undefined;
+}
+
 function withDefaultTransition(
   target: PerTypeVariant,
   defaultTransition: AnimationOptions | undefined,
@@ -272,6 +291,9 @@ function withDefaultTransition(
         delayScope === "local"
           ? [info.index, info.count]
           : [info.globalIndex, info.globalCount];
+      if (!Number.isFinite(index) || !Number.isFinite(count) || count <= 0) {
+        return undefined;
+      }
       const value = delay(index, count);
       return Number.isFinite(value) ? value : undefined;
     }
@@ -897,7 +919,7 @@ function buildFnItems(
             delayScope === "local" ? info.count : info.globalCount
           )
         : rawDelay;
-    if (resolvedDelay != null) {
+    if (resolvedDelay != null && Number.isFinite(resolvedDelay)) {
       merged = { ...merged, delay: resolvedDelay };
     } else if ("delay" in merged) {
       const { delay: _removed, ...restNoDelay } = merged;
@@ -1109,6 +1131,72 @@ function attrsToProps(attrs: Record<string, string>): Record<string, unknown> {
   return props;
 }
 
+function serializeInitial(value: unknown): string {
+  if (value == null) return "";
+  if (typeof value === "function") return value.toString();
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function serializeNode(node: ReactNode): string {
+  if (node == null || typeof node === "boolean") return "";
+  if (typeof node === "string" || typeof node === "number") {
+    return String(node);
+  }
+  if (Array.isArray(node)) {
+    return node.map(serializeNode).join("");
+  }
+  if (isValidElement(node)) {
+    const elementType = node.type as
+      | string
+      | {
+          displayName?: string;
+          name?: string;
+        };
+    const type =
+      typeof elementType === "string"
+        ? elementType
+        : elementType.displayName || elementType.name || "Component";
+    const props = node.props as Record<string, unknown> | null | undefined;
+    const className =
+      typeof props?.className === "string" ? props.className : "";
+    return `<${type}${className ? `.${className}` : ""}>${serializeNode(
+      (props as { children?: ReactNode } | undefined)?.children
+    )}</${type}>`;
+  }
+  return "";
+}
+
+function buildSplitSignature(
+  child: ReactElement,
+  options: SplitTextOptions | undefined,
+  initialStyles: InitialStyles | undefined,
+  initialClasses: InitialClasses | undefined
+): string {
+  const opt = options ?? {};
+  const signature = {
+    type: opt.type ?? "",
+    charClass: opt.charClass ?? "",
+    wordClass: opt.wordClass ?? "",
+    lineClass: opt.lineClass ?? "",
+    mask: opt.mask ?? "",
+    propIndex: !!opt.propIndex,
+    disableKerning: !!opt.disableKerning,
+    initialStyles: serializeInitial(initialStyles),
+    initialClasses: serializeInitial(initialClasses),
+    child: serializeNode(child),
+  };
+  try {
+    return JSON.stringify(signature);
+  } catch {
+    return String(signature);
+  }
+}
+
 function getMotionComponent(tag: string): React.ElementType {
   const registry = motion as unknown as Record<string, React.ElementType>;
   return registry[tag] ?? motion.span;
@@ -1223,7 +1311,9 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
     const [data, setData] = useState<SplitTextData | null>(null);
     const [isReady, setIsReady] = useState(false);
     const [isInView, setIsInView] = useState(false);
-    const [isPresent] = usePresence();
+    const [isPresent, safeToRemove] = usePresence();
+    const presenceEnabled = typeof safeToRemove === "function";
+    const instanceId = useId();
 
     // Merge internal ref with forwarded ref
     const mergedRef = useCallback(
@@ -1262,6 +1352,9 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
     const initialVariantRef = useRef(initialVariant);
     const whileInViewRef = useRef(whileInView);
     const whileOutOfViewRef = useRef(whileOutOfView);
+    const debugPresence =
+      (options as { __debugPresence?: boolean } | undefined)?.__debugPresence ===
+      true;
 
     useLayoutEffect(() => {
       onSplitRef.current = onSplit;
@@ -1278,6 +1371,28 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
       whileInViewRef.current = whileInView;
       whileOutOfViewRef.current = whileOutOfView;
     });
+
+    useEffect(() => {
+      if (!debugPresence) return;
+      console.log(
+        "[fetta][SplitText]",
+        instanceId,
+        "present",
+        isPresent,
+        "ready",
+        isReady,
+        "data",
+        !!data
+      );
+    }, [debugPresence, instanceId, isPresent, isReady, data]);
+
+    useEffect(() => {
+      if (!debugPresence) return;
+      console.log("[fetta][SplitText]", instanceId, "mount");
+      return () => {
+        console.log("[fetta][SplitText]", instanceId, "unmount");
+      };
+    }, [debugPresence, instanceId]);
 
     // Refs for tracking state
     const hasSplitRef = useRef(false);
@@ -1304,7 +1419,9 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
       return merged;
     }, [variants, inlineExitVariant, exit]);
 
-    const exitLabel = inlineExitVariant ? "__fetta_exit__" : exit;
+    const exitLabel: string | false | undefined = inlineExitVariant
+      ? "__fetta_exit__"
+      : exit;
     const hasVariants = !!(
       resolvedVariants && Object.keys(resolvedVariants).length
     );
@@ -1314,7 +1431,20 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
       setChildElement(element instanceof HTMLElement ? element : null);
     }, [children, data]);
 
-    useEffect(() => {
+    const splitSignature = useMemo(() => {
+      if (!isValidElement(children)) return "";
+      return buildSplitSignature(
+        children,
+        options,
+        initialStyles,
+        initialClasses
+      );
+    }, [children, options, initialStyles, initialClasses]);
+
+    const lastSignatureRef = useRef<string>("");
+    const pendingSignatureRef = useRef<string | null>(null);
+
+    const resetSplitState = useCallback((nextSignature: string) => {
       hasSplitRef.current = false;
       hasRevertedRef.current = false;
       originalHTMLRef.current = null;
@@ -1322,7 +1452,27 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
       pendingResizeRef.current = false;
       setData(null);
       setIsReady(false);
-    }, [children, options]);
+      lastSignatureRef.current = nextSignature;
+    }, []);
+
+    useEffect(() => {
+      if (!splitSignature) return;
+      if (splitSignature === lastSignatureRef.current) return;
+      if (!isPresent) {
+        pendingSignatureRef.current = splitSignature;
+        return;
+      }
+      pendingSignatureRef.current = null;
+      resetSplitState(splitSignature);
+    }, [splitSignature, isPresent, resetSplitState]);
+
+    useEffect(() => {
+      if (!isPresent) return;
+      if (!pendingSignatureRef.current) return;
+      const next = pendingSignatureRef.current;
+      pendingSignatureRef.current = null;
+      resetSplitState(next);
+    }, [isPresent, resetSplitState]);
 
     function setupViewportObserver(container: HTMLElement) {
       const vpOptions = viewportRef.current || {};
@@ -1430,6 +1580,15 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
       [transition]
     );
 
+    const hasOrchestrationVariants = useMemo(() => {
+      if (hasOrchestration(transition)) return true;
+      if (!resolvedVariants) return false;
+      for (const def of Object.values(resolvedVariants)) {
+        if (hasOrchestration(getVariantTransition(def))) return true;
+      }
+      return false;
+    }, [transition, resolvedVariants]);
+
     const childDefaultTransition = useMemo(
       () => stripOrchestration(transition),
       [transition]
@@ -1446,13 +1605,46 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
       [resolvedVariants, targetType, childDefaultTransition, delayScope]
     );
 
+    const exitTypes = useMemo(() => {
+      const exitKey = typeof exitLabel === "string" ? exitLabel : null;
+      if (!exitKey) return [] as SplitTypeKey[];
+      const types: SplitTypeKey[] = [];
+      for (const key of ELEMENT_TYPE_KEYS) {
+        const defs = (variantsByType as Partial<
+          Record<SplitTypeKey, Record<string, PerTypeVariant>>
+        >)[key];
+        if (defs && exitKey in defs) {
+          types.push(key);
+        }
+      }
+      return types;
+    }, [variantsByType, exitLabel]);
+
+    const exitTotalCount = useMemo(() => {
+      return exitTypes.reduce((sum, type) => {
+        const count = variantInfo.counts[type] ?? 0;
+        return sum + count;
+      }, 0);
+    }, [exitTypes, variantInfo.counts]);
+
     const parentVariants = useMemo(() => {
-      if (!resolvedVariants || !orchestrationTransition) return undefined;
+      if (!resolvedVariants) return undefined;
       const entries = Object.keys(resolvedVariants);
       if (entries.length === 0) return undefined;
       const result: Record<string, VariantTarget> = {};
       for (const key of entries) {
-        result[key] = { transition: orchestrationTransition };
+        const def = resolvedVariants[key];
+        const localOrchestration = pickOrchestration(
+          getVariantTransition(def)
+        );
+        const transitionValue =
+          orchestrationTransition || localOrchestration
+            ? {
+                ...(orchestrationTransition ?? {}),
+                ...(localOrchestration ?? {}),
+              }
+            : undefined;
+        result[key] = transitionValue ? { transition: transitionValue } : {};
       }
       return result;
     }, [resolvedVariants, orchestrationTransition]);
@@ -1461,9 +1653,51 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
       animateVariantName
     );
 
+    const exitTrackerRef = useRef({
+      isPresent: true,
+      total: 0,
+      completed: 0,
+      session: 0,
+    });
+
+    useEffect(() => {
+      exitTrackerRef.current.isPresent = isPresent;
+    }, [isPresent]);
+
+    useEffect(() => {
+      if (!presenceEnabled) return;
+      const tracker = exitTrackerRef.current;
+      tracker.session += 1;
+      tracker.completed = 0;
+      tracker.total = exitTotalCount;
+
+      if (isPresent) return;
+      if (!exitLabel || exitTotalCount === 0) {
+        safeToRemove?.();
+      }
+    }, [presenceEnabled, isPresent, exitLabel, exitTotalCount, safeToRemove]);
+
+    const handleExitComplete = useCallback(
+      (definition?: string | VariantTarget) => {
+        if (!presenceEnabled) return;
+        const tracker = exitTrackerRef.current;
+        if (tracker.isPresent) return;
+        if (typeof exitLabel !== "string") return;
+        if (definition !== exitLabel) return;
+        tracker.completed += 1;
+        if (tracker.completed >= tracker.total) {
+          safeToRemove?.();
+        }
+      },
+      [presenceEnabled, exitLabel, safeToRemove]
+    );
+
     useEffect(() => {
       if (!hasVariants) return;
       if (!resolvedVariants) return;
+
+      if (!isPresent) return;
+
       if (whileScroll) return;
 
       const vDefs = resolvedVariants;
@@ -1493,7 +1727,14 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
       if (animateName && vDefs[animateName]) {
         setActiveVariant(animateName);
       }
-    }, [isInView, hasVariants, resolvedVariants, animateVariantName, whileScroll]);
+    }, [
+      isInView,
+      hasVariants,
+      resolvedVariants,
+      animateVariantName,
+      whileScroll,
+      isPresent,
+    ]);
 
     useEffect(() => {
       if (!data || !childElement) return;
@@ -1729,6 +1970,28 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
     }
 
     const counters = { char: 0, word: 0, line: 0 };
+    const exitProp = exitLabel === false ? undefined : exitLabel;
+    const shouldInheritVariants = hasOrchestrationVariants || !!whileScroll;
+    const childInitial =
+      shouldInheritVariants || initialVariant === undefined
+        ? undefined
+        : initialVariant;
+    const childAnimate =
+      shouldInheritVariants || !hasVariants || !isReady
+        ? undefined
+        : activeVariant;
+    const childWhileHover = shouldInheritVariants ? undefined : whileHover;
+    const wrapperVariants = shouldInheritVariants ? parentVariants : undefined;
+    const wrapperInitial =
+      shouldInheritVariants && initialVariant !== undefined
+        ? initialVariant
+        : undefined;
+    const wrapperAnimate =
+      shouldInheritVariants && hasVariants && isReady ? activeVariant : undefined;
+    const wrapperExit = shouldInheritVariants ? exitProp : undefined;
+    const wrapperTransition =
+      shouldInheritVariants && hasVariants ? orchestrationTransition : undefined;
+    const wrapperWhileHover = shouldInheritVariants ? whileHover : undefined;
 
     function renderNode(node: SplitTextDataNode, key: string): ReactNode {
       if (node.type === "text") {
@@ -1759,6 +2022,11 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
         const variantsForType = (variantsByType as Record<string, unknown>)[
           splitType
         ] as Record<string, PerTypeVariant> | undefined;
+        const needsExitTracking =
+          presenceEnabled &&
+          typeof exitLabel === "string" &&
+          variantsForType &&
+          exitLabel in variantsForType;
 
         return createElement(
           MotionTag,
@@ -1767,6 +2035,13 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
             ...props,
             custom: info,
             variants: variantsForType,
+            initial: childInitial,
+            animate: childAnimate,
+            whileHover: childWhileHover,
+            exit: exitProp,
+            onAnimationComplete: needsExitTracking
+              ? handleExitComplete
+              : undefined,
           },
           renderNodes(node.children, key)
         );
@@ -1817,16 +2092,17 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
           position: "relative",
           ...userStyle,
         },
-        variants: hasVariants ? parentVariants : undefined,
-        initial:
-          initialVariant === undefined ? undefined : initialVariant,
-        animate: hasVariants && isReady ? activeVariant : undefined,
-        whileHover,
-        exit: exitLabel,
-        transition: hasVariants ? orchestrationTransition : undefined,
+        variants: wrapperVariants,
+        initial: wrapperInitial,
+        animate: wrapperAnimate,
+        whileHover: wrapperWhileHover,
+        exit: wrapperExit,
+        transition: wrapperTransition,
         onHoverStart,
         onHoverEnd,
-        onAnimationComplete: handleAnimationComplete,
+        onAnimationComplete: (definition?: string | VariantTarget) => {
+          handleAnimationComplete(definition);
+        },
       },
       child
     );

@@ -114,7 +114,7 @@ For Motion variants:
 import { SplitText } from 'fetta/motion';
 ```
 
-Animate on exit with Motion's `AnimatePresence`:
+Animate on exit with Motion's `AnimatePresence` (make `SplitText` the direct child):
 
 ```tsx
 import { AnimatePresence } from "motion/react";
