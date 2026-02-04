@@ -1425,6 +1425,7 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
     const hasVariants = !!(
       resolvedVariants && Object.keys(resolvedVariants).length
     );
+    const hasHover = !!(whileHover && hasVariants);
 
     useLayoutEffect(() => {
       const element = containerRef.current?.firstElementChild;
@@ -1652,6 +1653,13 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
     const [activeVariant, setActiveVariant] = useState<string | undefined>(
       animateVariantName
     );
+    const [isHovered, setIsHovered] = useState(false);
+
+    useEffect(() => {
+      if (!hasHover) {
+        setIsHovered(false);
+      }
+    }, [hasHover]);
 
     const exitTrackerRef = useRef({
       isPresent: true,
@@ -1691,6 +1699,20 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
       },
       [presenceEnabled, exitLabel, safeToRemove]
     );
+
+    const handleHoverStart = useCallback(() => {
+      if (hasHover) {
+        setIsHovered(true);
+      }
+      onHoverStart?.();
+    }, [hasHover, onHoverStart]);
+
+    const handleHoverEnd = useCallback(() => {
+      if (hasHover) {
+        setIsHovered(false);
+      }
+      onHoverEnd?.();
+    }, [hasHover, onHoverEnd]);
 
     useEffect(() => {
       if (!hasVariants) return;
@@ -1971,7 +1993,11 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
 
     const counters = { char: 0, word: 0, line: 0 };
     const exitProp = exitLabel === false ? undefined : exitLabel;
-    const shouldInheritVariants = hasOrchestrationVariants || !!whileScroll;
+    const hoverVariant = hasHover ? whileHover : undefined;
+    const displayVariant =
+      isHovered && hoverVariant ? hoverVariant : activeVariant;
+    const shouldInheritVariants =
+      hasOrchestrationVariants || !!whileScroll || hasHover;
     const childInitial =
       shouldInheritVariants || initialVariant === undefined
         ? undefined
@@ -1979,19 +2005,19 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
     const childAnimate =
       shouldInheritVariants || !hasVariants || !isReady
         ? undefined
-        : activeVariant;
-    const childWhileHover = shouldInheritVariants ? undefined : whileHover;
+        : displayVariant;
     const wrapperVariants = shouldInheritVariants ? parentVariants : undefined;
     const wrapperInitial =
       shouldInheritVariants && initialVariant !== undefined
         ? initialVariant
         : undefined;
     const wrapperAnimate =
-      shouldInheritVariants && hasVariants && isReady ? activeVariant : undefined;
+      shouldInheritVariants && hasVariants && isReady
+        ? displayVariant
+        : undefined;
     const wrapperExit = shouldInheritVariants ? exitProp : undefined;
     const wrapperTransition =
       shouldInheritVariants && hasVariants ? orchestrationTransition : undefined;
-    const wrapperWhileHover = shouldInheritVariants ? whileHover : undefined;
 
     function renderNode(node: SplitTextDataNode, key: string): ReactNode {
       if (node.type === "text") {
@@ -2037,7 +2063,6 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
             variants: variantsForType,
             initial: childInitial,
             animate: childAnimate,
-            whileHover: childWhileHover,
             exit: exitProp,
             onAnimationComplete: needsExitTracking
               ? handleExitComplete
@@ -2095,11 +2120,10 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
         variants: wrapperVariants,
         initial: wrapperInitial,
         animate: wrapperAnimate,
-        whileHover: wrapperWhileHover,
         exit: wrapperExit,
         transition: wrapperTransition,
-        onHoverStart,
-        onHoverEnd,
+        onHoverStart: handleHoverStart,
+        onHoverEnd: handleHoverEnd,
         onAnimationComplete: (definition?: string | VariantTarget) => {
           handleAnimationComplete(definition);
         },
