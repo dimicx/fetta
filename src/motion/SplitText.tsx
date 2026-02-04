@@ -1337,6 +1337,11 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
       resetOnViewportLeave ||
       viewport
     );
+    const viewportAmount = viewport?.amount ?? 0;
+    const viewportLeave = viewport?.leave ?? 0;
+    const viewportMargin = viewport?.margin ?? "0px";
+    const viewportOnce = viewport?.once ?? false;
+    const viewportRoot = viewport?.root?.current ?? null;
 
     const inlineInitialVariant =
       initialVariant != null &&
@@ -1869,10 +1874,6 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
         }
       }
 
-      if (needsViewport && containerRef.current) {
-        setupViewportObserver(containerRef.current);
-      }
-
       return () => {
         if (observerRef.current) {
           observerRef.current.disconnect();
@@ -1880,6 +1881,40 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
         }
       };
     }, [data, childElement, needsViewport]);
+
+    useEffect(() => {
+      if (!needsViewport) {
+        if (observerRef.current) {
+          observerRef.current.disconnect();
+          observerRef.current = null;
+        }
+        return;
+      }
+      if (!containerRef.current) return;
+      if (!data) return;
+
+      if (observerRef.current) {
+        observerRef.current.disconnect();
+        observerRef.current = null;
+      }
+
+      setupViewportObserver(containerRef.current);
+
+      return () => {
+        if (observerRef.current) {
+          observerRef.current.disconnect();
+          observerRef.current = null;
+        }
+      };
+    }, [
+      data,
+      needsViewport,
+      viewportAmount,
+      viewportLeave,
+      viewportMargin,
+      viewportOnce,
+      viewportRoot,
+    ]);
 
     const shouldRevertOnComplete =
       hasVariants &&
