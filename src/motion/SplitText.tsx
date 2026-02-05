@@ -1,5 +1,10 @@
 import { splitTextData } from "../internal/splitTextShared";
 import { normalizeToPromise } from "../core/splitText";
+import {
+  reapplyInitialStyles,
+  reapplyInitialClasses,
+} from "../internal/initialStyles";
+import type { InitialStyles, InitialClasses } from "../internal/initialStyles";
 import { animate, scroll } from "motion";
 import { MotionConfig, motion, usePresence, useReducedMotion } from "motion/react";
 import type { AnimationOptions, DOMKeyframesDefinition } from "motion";
@@ -20,76 +25,6 @@ import {
   useId,
 } from "react";
 import type { SplitTextData, SplitTextDataNode } from "../core/splitText";
-
-/** Style value for initialStyles - a partial style object */
-type InitialStyleValue = Partial<CSSStyleDeclaration>;
-
-/** Function that returns styles based on element and index */
-type InitialStyleFn = (element: HTMLElement, index: number) => InitialStyleValue;
-
-/** Initial style can be a static object or a function */
-type InitialStyle = InitialStyleValue | InitialStyleFn;
-
-/** Initial styles configuration for chars, words, and/or lines */
-interface InitialStyles {
-  chars?: InitialStyle;
-  words?: InitialStyle;
-  lines?: InitialStyle;
-}
-
-/** Initial classes configuration for chars, words, and/or lines */
-interface InitialClasses {
-  chars?: string;
-  words?: string;
-  lines?: string;
-}
-
-/**
- * Re-apply initial styles to elements.
- */
-function reapplyInitialStyles(
-  elements: HTMLElement[],
-  style: InitialStyle | undefined
-): void {
-  if (!style || elements.length === 0) return;
-
-  const isFn = typeof style === "function";
-
-  for (let i = 0; i < elements.length; i++) {
-    const el = elements[i];
-    const styles = isFn ? style(el, i) : style;
-
-    for (const [key, value] of Object.entries(styles)) {
-      if (value == null) continue;
-      if (key === "cssText") {
-        if (typeof value === "string") {
-          el.style.cssText = value;
-        }
-        continue;
-      }
-      if (typeof value !== "string" && typeof value !== "number") continue;
-      const cssValue = typeof value === "number" ? String(value) : value;
-      const cssKey = key.startsWith("--")
-        ? key
-        : key.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`);
-      el.style.setProperty(cssKey, cssValue);
-    }
-  }
-}
-
-/**
- * Re-apply initial classes to elements.
- */
-function reapplyInitialClasses(
-  elements: HTMLElement[],
-  className: string | undefined
-): void {
-  if (!className || elements.length === 0) return;
-  const classes = className.split(/\s+/).filter(Boolean);
-  for (const el of elements) {
-    el.classList.add(...classes);
-  }
-}
 
 interface SplitTextOptions {
   type?:
@@ -565,89 +500,52 @@ function collectRelations(nodes: SplitTextDataNode[]): RelationMaps {
   return { charToWord, charToLine, wordToLine, counts };
 }
 
+/** Compute relative indices and group counts from a parent-group mapping array. */
+function computeGroupIndices(
+  parentMap: number[]
+): { indices: number[]; counts: number[] } {
+  const indices: number[] = [];
+  const counts: number[] = [];
+  if (!parentMap.length) return { indices, counts };
+
+  let prev = -1;
+  let counter = 0;
+  for (let i = 0; i < parentMap.length; i++) {
+    if (parentMap[i] !== prev) {
+      counter = 0;
+      prev = parentMap[i];
+    }
+    indices[i] = counter++;
+  }
+  const countByGroup: number[] = [];
+  for (let i = indices.length - 1; i >= 0; i--) {
+    if (i === indices.length - 1 || parentMap[i] !== parentMap[i + 1]) {
+      countByGroup[parentMap[i]] = indices[i] + 1;
+    }
+  }
+  for (let i = 0; i < parentMap.length; i++) {
+    counts[i] = countByGroup[parentMap[i]];
+  }
+  return { indices, counts };
+}
+
 function buildIndexMaps(relations: RelationMaps): IndexMaps {
   const { charToWord, charToLine, wordToLine } = relations;
 
-  const charInWord: number[] = [];
-  const charCountInWord: number[] = [];
-  const charInLine: number[] = [];
-  const charCountInLine: number[] = [];
-  const wordInLine: number[] = [];
-  const wordCountInLine: number[] = [];
-
-  if (charToWord.length) {
-    let prev = -1;
-    let counter = 0;
-    for (let ci = 0; ci < charToWord.length; ci++) {
-      if (charToWord[ci] !== prev) {
-        counter = 0;
-        prev = charToWord[ci];
-      }
-      charInWord[ci] = counter++;
-    }
-    const countByGroup: number[] = [];
-    for (let ci = charInWord.length - 1; ci >= 0; ci--) {
-      if (ci === charInWord.length - 1 || charToWord[ci] !== charToWord[ci + 1]) {
-        countByGroup[charToWord[ci]] = charInWord[ci] + 1;
-      }
-    }
-    for (let ci = 0; ci < charToWord.length; ci++) {
-      charCountInWord[ci] = countByGroup[charToWord[ci]];
-    }
-  }
-
-  if (charToLine.length) {
-    let prev = -1;
-    let counter = 0;
-    for (let ci = 0; ci < charToLine.length; ci++) {
-      if (charToLine[ci] !== prev) {
-        counter = 0;
-        prev = charToLine[ci];
-      }
-      charInLine[ci] = counter++;
-    }
-    const countByGroup: number[] = [];
-    for (let ci = charInLine.length - 1; ci >= 0; ci--) {
-      if (ci === charInLine.length - 1 || charToLine[ci] !== charToLine[ci + 1]) {
-        countByGroup[charToLine[ci]] = charInLine[ci] + 1;
-      }
-    }
-    for (let ci = 0; ci < charToLine.length; ci++) {
-      charCountInLine[ci] = countByGroup[charToLine[ci]];
-    }
-  }
-
-  if (wordToLine.length) {
-    let prev = -1;
-    let counter = 0;
-    for (let wi = 0; wi < wordToLine.length; wi++) {
-      if (wordToLine[wi] !== prev) {
-        counter = 0;
-        prev = wordToLine[wi];
-      }
-      wordInLine[wi] = counter++;
-    }
-    const countByGroup: number[] = [];
-    for (let wi = wordInLine.length - 1; wi >= 0; wi--) {
-      if (wi === wordInLine.length - 1 || wordToLine[wi] !== wordToLine[wi + 1]) {
-        countByGroup[wordToLine[wi]] = wordInLine[wi] + 1;
-      }
-    }
-    for (let wi = 0; wi < wordToLine.length; wi++) {
-      wordCountInLine[wi] = countByGroup[wordToLine[wi]];
-    }
-  }
+  const ciw = computeGroupIndices(charToWord);
+  const cil = computeGroupIndices(charToLine);
+  const wil = computeGroupIndices(wordToLine);
 
   return {
     charToWord,
     charToLine,
     wordToLine,
-    charInWord,
-    charCountInWord,
-    charInLine,
-    charCountInLine,
-    wordInLine,
-    wordCountInLine,
+    charInWord: ciw.indices,
+    charCountInWord: ciw.counts,
+    charInLine: cil.indices,
+    charCountInLine: cil.counts,
+    wordInLine: wil.indices,
+    wordCountInLine: wil.counts,
   };
 }
 
@@ -754,19 +652,7 @@ function extractTransition(
   return { props, transition };
 }
 
-interface IndexMapsDom {
-  charToWord: number[];
-  charToLine: number[];
-  wordToLine: number[];
-  charInWord: number[];
-  charCountInWord: number[];
-  charInLine: number[];
-  charCountInLine: number[];
-  wordInLine: number[];
-  wordCountInLine: number[];
-}
-
-function buildIndexMapsDom(result: SplitTextElements): IndexMapsDom {
+function buildIndexMapsDom(result: SplitTextElements): IndexMaps {
   const charToWord: number[] = [];
   const charToLine: number[] = [];
   const wordToLine: number[] = [];
@@ -813,155 +699,20 @@ function buildIndexMapsDom(result: SplitTextElements): IndexMapsDom {
     }
   }
 
-  const charInWord: number[] = [];
-  const charCountInWord: number[] = [];
-  const charInLine: number[] = [];
-  const charCountInLine: number[] = [];
-  const wordInLine: number[] = [];
-  const wordCountInLine: number[] = [];
-
-  if (charToWord.length) {
-    let prev = -1;
-    let counter = 0;
-    for (let ci = 0; ci < charToWord.length; ci++) {
-      if (charToWord[ci] !== prev) {
-        counter = 0;
-        prev = charToWord[ci];
-      }
-      charInWord[ci] = counter++;
-    }
-    const countByGroup: number[] = [];
-    for (let ci = charInWord.length - 1; ci >= 0; ci--) {
-      if (ci === charInWord.length - 1 || charToWord[ci] !== charToWord[ci + 1]) {
-        countByGroup[charToWord[ci]] = charInWord[ci] + 1;
-      }
-    }
-    for (let ci = 0; ci < charToWord.length; ci++) {
-      charCountInWord[ci] = countByGroup[charToWord[ci]];
-    }
-  }
-
-  if (charToLine.length) {
-    let prev = -1;
-    let counter = 0;
-    for (let ci = 0; ci < charToLine.length; ci++) {
-      if (charToLine[ci] !== prev) {
-        counter = 0;
-        prev = charToLine[ci];
-      }
-      charInLine[ci] = counter++;
-    }
-    const countByGroup: number[] = [];
-    for (let ci = charInLine.length - 1; ci >= 0; ci--) {
-      if (ci === charInLine.length - 1 || charToLine[ci] !== charToLine[ci + 1]) {
-        countByGroup[charToLine[ci]] = charInLine[ci] + 1;
-      }
-    }
-    for (let ci = 0; ci < charToLine.length; ci++) {
-      charCountInLine[ci] = countByGroup[charToLine[ci]];
-    }
-  }
-
-  if (wordToLine.length) {
-    let prev = -1;
-    let counter = 0;
-    for (let wi = 0; wi < wordToLine.length; wi++) {
-      if (wordToLine[wi] !== prev) {
-        counter = 0;
-        prev = wordToLine[wi];
-      }
-      wordInLine[wi] = counter++;
-    }
-    const countByGroup: number[] = [];
-    for (let wi = wordInLine.length - 1; wi >= 0; wi--) {
-      if (wi === wordInLine.length - 1 || wordToLine[wi] !== wordToLine[wi + 1]) {
-        countByGroup[wordToLine[wi]] = wordInLine[wi] + 1;
-      }
-    }
-    for (let wi = 0; wi < wordToLine.length; wi++) {
-      wordCountInLine[wi] = countByGroup[wordToLine[wi]];
-    }
-  }
+  const ciw = computeGroupIndices(charToWord);
+  const cil = computeGroupIndices(charToLine);
+  const wil = computeGroupIndices(wordToLine);
 
   return {
     charToWord,
     charToLine,
     wordToLine,
-    charInWord,
-    charCountInWord,
-    charInLine,
-    charCountInLine,
-    wordInLine,
-    wordCountInLine,
-  };
-}
-
-function buildFnInfoFromDom<TCustom = unknown>(
-  elementType: SplitTypeKey,
-  globalIndex: number,
-  total: number,
-  maps: IndexMapsDom,
-  isPresent: boolean,
-  custom?: TCustom
-): VariantInfo<TCustom> {
-  if (elementType === "chars") {
-    const lineIndex = maps.charToLine.length
-      ? maps.charToLine[globalIndex]
-      : 0;
-    const wordIndex = maps.charToWord.length
-      ? maps.charToWord[globalIndex]
-      : 0;
-    const index = maps.charInLine.length
-      ? maps.charInLine[globalIndex]
-      : maps.charInWord.length
-        ? maps.charInWord[globalIndex]
-        : globalIndex;
-    const count = maps.charCountInLine.length
-      ? maps.charCountInLine[globalIndex]
-      : maps.charCountInWord.length
-        ? maps.charCountInWord[globalIndex]
-        : total;
-    return {
-      index,
-      count,
-      globalIndex,
-      globalCount: total,
-      lineIndex,
-      wordIndex,
-      custom,
-      isPresent,
-    };
-  }
-  if (elementType === "words") {
-    const lineIndex = maps.wordToLine.length
-      ? maps.wordToLine[globalIndex]
-      : 0;
-    const index = maps.wordInLine.length
-      ? maps.wordInLine[globalIndex]
-      : globalIndex;
-    const count = maps.wordCountInLine.length
-      ? maps.wordCountInLine[globalIndex]
-      : total;
-    return {
-      index,
-      count,
-      globalIndex,
-      globalCount: total,
-      lineIndex,
-      wordIndex: globalIndex,
-      custom,
-      isPresent,
-    };
-  }
-  return {
-    index: globalIndex,
-    count: total,
-    globalIndex,
-    globalCount: total,
-    lineIndex: globalIndex,
-    wordIndex: 0,
-    custom,
-    isPresent,
+    charInWord: ciw.indices,
+    charCountInWord: ciw.counts,
+    charInLine: cil.indices,
+    charCountInLine: cil.counts,
+    wordInLine: wil.indices,
+    wordCountInLine: wil.counts,
   };
 }
 
@@ -979,7 +730,7 @@ function buildFnItems<TCustom = unknown>(
   elements: HTMLSpanElement[],
   elementType: SplitTypeKey,
   fn: VariantResolver<TCustom>,
-  maps: IndexMapsDom,
+  maps: IndexMaps,
   transition: AnimationOptions | undefined,
   isPresent: boolean,
   delayScope: DelayScope,
@@ -993,7 +744,7 @@ function buildFnItems<TCustom = unknown>(
   const instantTransition = { duration: 0, delay: 0 };
 
   for (let i = 0; i < total; i++) {
-    const info = buildFnInfoFromDom(
+    const info = buildVariantInfo(
       elementType,
       i,
       total,
