@@ -191,9 +191,15 @@ export interface VariantInfo<TCustom = unknown> {
 type VariantResolver<TCustom = unknown> = (
   info: VariantInfo<TCustom>
 ) => VariantTarget;
+type WrapperVariantResolver<TCustom = unknown> = (
+  args: { custom?: TCustom }
+) => VariantTarget;
 type PerTypeVariant<TCustom = unknown> =
   | VariantTarget
   | VariantResolver<TCustom>;
+type WrapperVariant<TCustom = unknown> =
+  | VariantTarget
+  | WrapperVariantResolver<TCustom>;
 
 /** A variant: flat target, flat function, per-type targets (static or function), with optional transition */
 type VariantDefinition<TCustom = unknown> =
@@ -203,6 +209,7 @@ type VariantDefinition<TCustom = unknown> =
       chars?: PerTypeVariant<TCustom>;
       words?: PerTypeVariant<TCustom>;
       lines?: PerTypeVariant<TCustom>;
+      wrapper?: WrapperVariant<TCustom>;
       transition?: AnimationOptions;
     };
 
@@ -216,6 +223,7 @@ const ELEMENT_TYPE_KEYS: SplitTypeKey[] = ["chars", "words", "lines"];
 type PerTypeVariants<TCustom = unknown> = Partial<
   Record<SplitTypeKey, PerTypeVariant<TCustom>>
 > & {
+  wrapper?: WrapperVariant<TCustom>;
   transition?: AnimationOptions;
 };
 
@@ -223,7 +231,7 @@ function isPerTypeVariant<TCustom = unknown>(
   v: VariantDefinition<TCustom>
 ): v is PerTypeVariants<TCustom> {
   if (typeof v !== "object" || v === null) return false;
-  return "chars" in v || "words" in v || "lines" in v;
+  return "chars" in v || "words" in v || "lines" in v || "wrapper" in v;
 }
 
 const ORCHESTRATION_KEYS = new Set([
@@ -401,12 +409,16 @@ function buildVariantsByType<TCustom = unknown>(
   childDefaultTransition: AnimationOptions | undefined,
   delayScope: DelayScope,
   forceInstant = false
-): Partial<Record<SplitTypeKey, Record<string, PerTypeVariant<TCustom>>>> {
-  if (!variants) return {};
+): {
+  types: Partial<Record<SplitTypeKey, Record<string, PerTypeVariant<TCustom>>>>;
+  wrapper: Record<string, WrapperVariant<TCustom>>;
+} {
+  if (!variants) return { types: {}, wrapper: {} };
 
   const result: Partial<
     Record<SplitTypeKey, Record<string, PerTypeVariant<TCustom>>>
   > = {};
+  const wrapperVariants: Record<string, WrapperVariant<TCustom>> = {};
   const instantTransition: AnimationOptions = { duration: 0, delay: 0 };
   const applyInstant = (
     target: PerTypeVariant<TCustom>
@@ -414,6 +426,17 @@ function buildVariantsByType<TCustom = unknown>(
     if (typeof target === "function") {
       return (info: VariantInfo<TCustom>) => {
         const resolved = target(info);
+        return { ...resolved, transition: instantTransition };
+      };
+    }
+    return { ...target, transition: instantTransition };
+  };
+  const applyInstantWrapper = (
+    target: WrapperVariant<TCustom>
+  ): WrapperVariant<TCustom> => {
+    if (typeof target === "function") {
+      return ({ custom }: { custom?: TCustom }) => {
+        const resolved = target({ custom });
         return { ...resolved, transition: instantTransition };
       };
     }
@@ -427,6 +450,11 @@ function buildVariantsByType<TCustom = unknown>(
     const resolvedDefault = forceInstant ? instantTransition : defaultTransition;
 
     if (isPerTypeVariant<TCustom>(def)) {
+      if (def.wrapper) {
+        wrapperVariants[name] = forceInstant
+          ? applyInstantWrapper(def.wrapper)
+          : def.wrapper;
+      }
       for (const key of ELEMENT_TYPE_KEYS) {
         const perType = def[key];
         if (!perType) continue;
@@ -448,7 +476,7 @@ function buildVariantsByType<TCustom = unknown>(
     }
   }
 
-  return result;
+  return { types: result, wrapper: wrapperVariants };
 }
 
 // ---------------------------------------------------------------------------
@@ -1741,7 +1769,7 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
       return stripOrchestration(transition);
     }, [transition, reduceMotionActive]);
 
-    const variantsByType = useMemo(
+    const { types: variantsByType, wrapper: wrapperVariantsByName } = useMemo(
       () =>
         buildVariantsByType(
           resolvedVariants,
@@ -1764,7 +1792,7 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
       if (!exitKey) return [] as SplitTypeKey[];
       const types: SplitTypeKey[] = [];
       for (const key of ELEMENT_TYPE_KEYS) {
-      const defs = (variantsByType as Partial<
+        const defs = (variantsByType as Partial<
           Record<SplitTypeKey, Record<string, PerTypeVariant<TCustom>>>
         >)[key];
         if (defs && exitKey in defs) {
@@ -1809,10 +1837,38 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
       if (entries.length === 0) return undefined;
       const result: Record<string, VariantTarget> = {};
       for (const key of entries) {
+        const wrapperVariant = wrapperVariantsByName[key];
         const def = resolvedVariants[key];
         const localOrchestration = pickOrchestration(
           getVariantTransition(def)
         );
+        const wrapperBaseTransition = reduceMotionActive
+          ? { duration: 0, delay: 0 }
+          : stripOrchestration(transition);
+        const applyWrapperTransition = (target: VariantTarget) => {
+          if (!wrapperBaseTransition) return target;
+          if (target.transition) {
+            return {
+              ...target,
+              transition: { ...wrapperBaseTransition, ...target.transition },
+            };
+          }
+          return { ...target, transition: wrapperBaseTransition };
+        };
+        if (wrapperVariant) {
+          if (typeof wrapperVariant === "function") {
+            const resolved = wrapperVariant({ custom });
+            result[key] = reduceMotionActive
+              ? { ...resolved, transition: { duration: 0, delay: 0 } }
+              : applyWrapperTransition(resolved);
+          } else {
+            const resolved = reduceMotionActive
+              ? { ...wrapperVariant, transition: { duration: 0, delay: 0 } }
+              : wrapperVariant;
+            result[key] = applyWrapperTransition(resolved);
+          }
+          continue;
+        }
         const transitionValue = reduceMotionActive
           ? { duration: 0, delay: 0 }
           : orchestrationTransition || localOrchestration
@@ -1824,7 +1880,13 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
         result[key] = transitionValue ? { transition: transitionValue } : {};
       }
       return result;
-    }, [resolvedVariants, orchestrationTransition, reduceMotionActive]);
+    }, [
+      resolvedVariants,
+      orchestrationTransition,
+      reduceMotionActive,
+      wrapperVariantsByName,
+      custom,
+    ]);
 
     const [activeVariant, setActiveVariant] = useState<string | undefined>(
       animateLabel
@@ -2285,6 +2347,7 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
     const hoverVariant = hasHover ? whileHover : undefined;
     const tapVariant = hasTap ? whileTap : undefined;
     const focusVariant = hasFocus ? whileFocus : undefined;
+    const hasWrapperVariants = Object.keys(wrapperVariantsByName).length > 0;
     const interactionVariant =
       (isTapped && tapVariant) ||
       (isFocused && focusVariant) ||
@@ -2292,7 +2355,12 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
       undefined;
     const displayVariant = interactionVariant ?? activeVariant;
     const shouldInheritVariants =
-      hasOrchestrationVariants || !!whileScroll || hasHover || hasTap || hasFocus;
+      hasOrchestrationVariants ||
+      !!whileScroll ||
+      hasHover ||
+      hasTap ||
+      hasFocus ||
+      hasWrapperVariants;
     const childInitial =
       shouldInheritVariants || initialLabel === undefined
         ? undefined
