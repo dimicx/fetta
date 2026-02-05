@@ -53,6 +53,12 @@
       "path": "dist/react.js",
       "import": "*",
       "ignore": ["react"]
+    },
+    {
+      "name": "Motion",
+      "path": "dist/motion.js",
+      "import": "*",
+      "ignore": ["react", "motion", "motion/react"]
     }
   ],
   "peerDependencies": {
