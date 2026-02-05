@@ -1206,18 +1206,24 @@ function collectSplitElements(
   element: HTMLElement,
   options?: SplitTextOptions
 ): SplitTextElements {
-  const charClass = options?.charClass ?? "split-char";
-  const wordClass = options?.wordClass ?? "split-word";
-  const lineClass = options?.lineClass ?? "split-line";
+  const normalizeSelector = (value: string) => {
+    const tokens = value.split(/\s+/).filter(Boolean);
+    if (tokens.length === 0) return "";
+    return `.${tokens.join(".")}`;
+  };
+
+  const charClass = normalizeSelector(options?.charClass ?? "split-char");
+  const wordClass = normalizeSelector(options?.wordClass ?? "split-word");
+  const lineClass = normalizeSelector(options?.lineClass ?? "split-line");
 
   const chars = Array.from(
-    element.querySelectorAll<HTMLSpanElement>(`.${charClass}`)
+    element.querySelectorAll<HTMLSpanElement>(charClass)
   );
   const words = Array.from(
-    element.querySelectorAll<HTMLSpanElement>(`.${wordClass}`)
+    element.querySelectorAll<HTMLSpanElement>(wordClass)
   );
   const lines = Array.from(
-    element.querySelectorAll<HTMLSpanElement>(`.${lineClass}`)
+    element.querySelectorAll<HTMLSpanElement>(lineClass)
   );
 
   return { chars, words, lines, revert: () => {} };
