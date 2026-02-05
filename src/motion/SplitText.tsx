@@ -2101,12 +2101,7 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
         }
       }
 
-      return () => {
-        if (observerRef.current) {
-          observerRef.current.disconnect();
-          observerRef.current = null;
-        }
-      };
+      return undefined;
     }, [data, childElement, needsViewport]);
 
     useEffect(() => {

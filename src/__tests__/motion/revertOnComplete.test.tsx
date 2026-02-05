@@ -26,6 +26,11 @@ vi.mock("motion/react", async () => {
             exit: _exit,
             transition: _transition,
             whileHover: _whileHover,
+            onTapStart: _onTapStart,
+            onTapCancel: _onTapCancel,
+            onTap: _onTap,
+            onFocus: _onFocus,
+            onBlur: _onBlur,
             onHoverStart: _onHoverStart,
             onHoverEnd: _onHoverEnd,
             onAnimationComplete: _onAnimationComplete,
@@ -39,6 +44,7 @@ vi.mock("motion/react", async () => {
   return {
     motion,
     usePresence: () => [true, vi.fn()],
+    useReducedMotion: () => false,
   };
 });
 
