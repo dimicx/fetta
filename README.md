@@ -26,7 +26,10 @@ Split text into characters, words, and lines while preserving the original typog
 npm install fetta
 ```
 
-**Bundle size**: ~3.9 kB (`fetta/core`) / ~4.8 kB (`fetta/react`) — minified + compressed
+**Bundle size** (minified + brotli)
+- `fetta`: ~5.4 kB
+- `fetta/react`: ~6.7 kB
+- `fetta/motion`: ~11.2 kB
 
 ## Quick Start
 
