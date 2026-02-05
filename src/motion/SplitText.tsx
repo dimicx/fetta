@@ -1,7 +1,7 @@
 import { splitTextData } from "../internal/splitTextShared";
 import { normalizeToPromise } from "../core/splitText";
 import { animate, scroll } from "motion";
-import { motion, usePresence } from "motion/react";
+import { MotionConfig, motion, usePresence, useReducedMotion } from "motion/react";
 import type { AnimationOptions, DOMKeyframesDefinition } from "motion";
 import {
   createElement,
@@ -399,29 +399,40 @@ function buildVariantsByType<TCustom = unknown>(
   variants: Record<string, VariantDefinition<TCustom>> | undefined,
   targetType: SplitTypeKey,
   childDefaultTransition: AnimationOptions | undefined,
-  delayScope: DelayScope
+  delayScope: DelayScope,
+  forceInstant = false
 ): Partial<Record<SplitTypeKey, Record<string, PerTypeVariant<TCustom>>>> {
   if (!variants) return {};
 
   const result: Partial<
     Record<SplitTypeKey, Record<string, PerTypeVariant<TCustom>>>
   > = {};
-    {};
+  const instantTransition: AnimationOptions = { duration: 0, delay: 0 };
+  const applyInstant = (
+    target: PerTypeVariant<TCustom>
+  ): PerTypeVariant<TCustom> => {
+    if (typeof target === "function") {
+      return (info: VariantInfo<TCustom>) => {
+        const resolved = target(info);
+        return { ...resolved, transition: instantTransition };
+      };
+    }
+    return { ...target, transition: instantTransition };
+  };
 
   for (const [name, def] of Object.entries(variants)) {
     const defaultTransition = isPerTypeVariant<TCustom>(def)
       ? def.transition ?? childDefaultTransition
       : childDefaultTransition;
+    const resolvedDefault = forceInstant ? instantTransition : defaultTransition;
 
     if (isPerTypeVariant<TCustom>(def)) {
       for (const key of ELEMENT_TYPE_KEYS) {
         const perType = def[key];
         if (!perType) continue;
-        const entry = withDefaultTransition(
-          perType,
-          defaultTransition,
-          delayScope
-        );
+        const entry = forceInstant
+          ? applyInstant(perType)
+          : withDefaultTransition(perType, resolvedDefault, delayScope);
         if (!result[key]) result[key] = {};
         result[key]![name] = entry;
       }
@@ -429,7 +440,9 @@ function buildVariantsByType<TCustom = unknown>(
     }
 
     if (targetType) {
-      const entry = withDefaultTransition(def, defaultTransition, delayScope);
+      const entry = forceInstant
+        ? applyInstant(def)
+        : withDefaultTransition(def, resolvedDefault, delayScope);
       if (!result[targetType]) result[targetType] = {};
       result[targetType]![name] = entry;
     }
@@ -942,12 +955,14 @@ function buildFnItems<TCustom = unknown>(
   transition: AnimationOptions | undefined,
   isPresent: boolean,
   delayScope: DelayScope,
-  custom?: TCustom
+  custom?: TCustom,
+  forceInstant = false
 ): FnAnimationItem[] {
   const t = transition;
   const { delay: outerDelay, duration, ...rest } = t || {};
   const items: FnAnimationItem[] = [];
   const total = elements.length;
+  const instantTransition = { duration: 0, delay: 0 };
 
   for (let i = 0; i < total; i++) {
     const info = buildFnInfoFromDom(
@@ -959,29 +974,35 @@ function buildFnItems<TCustom = unknown>(
       custom
     );
     const { transition: localT, ...props } = fn(info);
-    let merged: AnimationOptions = localT ? { ...rest, ...localT } : { ...rest };
-    if (duration != null && merged.duration == null) {
-      merged = { ...merged, duration };
-    }
-    const rawDelay = merged.delay ?? outerDelay;
-    const resolvedDelay =
-      typeof rawDelay === "function"
-        ? rawDelay(
-            delayScope === "local" ? info.index : info.globalIndex,
-            delayScope === "local" ? info.count : info.globalCount
-          )
-        : rawDelay;
-    if (resolvedDelay != null && Number.isFinite(resolvedDelay)) {
-      merged = { ...merged, delay: resolvedDelay };
-    } else if ("delay" in merged) {
-      const { delay: _removed, ...restNoDelay } = merged;
-      merged = restNoDelay;
+    let merged: AnimationOptions | undefined;
+    if (forceInstant) {
+      merged = instantTransition;
+    } else {
+      merged = localT ? { ...rest, ...localT } : { ...rest };
+      if (duration != null && merged.duration == null) {
+        merged = { ...merged, duration };
+      }
+      const rawDelay = merged.delay ?? outerDelay;
+      const resolvedDelay =
+        typeof rawDelay === "function"
+          ? rawDelay(
+              delayScope === "local" ? info.index : info.globalIndex,
+              delayScope === "local" ? info.count : info.globalCount
+            )
+          : rawDelay;
+      if (resolvedDelay != null && Number.isFinite(resolvedDelay)) {
+        merged = { ...merged, delay: resolvedDelay };
+      } else if ("delay" in merged) {
+        const { delay: _removed, ...restNoDelay } = merged;
+        merged = restNoDelay;
+      }
     }
 
     items.push({
       element: elements[i],
       props,
-      transition: Object.keys(merged).length ? merged : undefined,
+      transition:
+        merged && Object.keys(merged).length ? merged : undefined,
     });
   }
 
@@ -995,8 +1016,11 @@ function animateVariant<TCustom = unknown>(
   type?: string,
   isPresent = true,
   delayScope: DelayScope = "global",
-  custom?: TCustom
+  custom?: TCustom,
+  forceInstant = false
 ): MotionAnimation[] {
+  const instantTransition = { duration: 0, delay: 0 };
+
   if (typeof variant === "function") {
     const targetType = getTargetTypeForElements(result, type);
     const elements = result[targetType];
@@ -1010,7 +1034,8 @@ function animateVariant<TCustom = unknown>(
       globalTransition,
       isPresent,
       delayScope,
-      custom
+      custom,
+      forceInstant
     );
     return items.map((item) =>
       animate(item.element, item.props, item.transition)
@@ -1041,7 +1066,8 @@ function animateVariant<TCustom = unknown>(
             localTransition,
             isPresent,
             delayScope,
-            custom
+            custom,
+            forceInstant
           );
           fnAnimations.push(
             ...items.map((item) =>
@@ -1050,7 +1076,7 @@ function animateVariant<TCustom = unknown>(
           );
         } else {
           const { props, transition: localT } = extractTransition(target);
-          const t = localT || globalTransition;
+          const t = forceInstant ? instantTransition : localT || globalTransition;
           staticAnimations.push(animate(result[key], props, t));
         }
       }
@@ -1064,7 +1090,7 @@ function animateVariant<TCustom = unknown>(
       if (!target || !result[key].length || typeof target === "function")
         continue;
       const { props, transition: localT } = extractTransition(target);
-      const t = localT || globalTransition;
+      const t = forceInstant ? instantTransition : localT || globalTransition;
       animations.push(animate(result[key], props, t));
     }
     return animations;
@@ -1072,7 +1098,7 @@ function animateVariant<TCustom = unknown>(
 
   const { props, transition: localT } = extractTransition(variant);
   const elements = getTargetElements(result, type);
-  const t = localT || globalTransition;
+  const t = forceInstant ? instantTransition : localT || globalTransition;
   return [animate(elements, props, t)];
 }
 
@@ -1138,6 +1164,8 @@ interface SplitTextProps<TCustom = unknown> {
   scroll?: ScrollPropOptions;
   /** Variant to animate to on hover */
   whileHover?: string;
+  /** Reduced motion handling (matches MotionConfig reducedMotion) */
+  reducedMotion?: "user" | "always" | "never";
   /** Custom data forwarded to function variants and AnimatePresence */
   custom?: TCustom;
   /** Called when hover starts */
@@ -1366,6 +1394,7 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
       exit,
       scroll: scrollProp,
       whileHover,
+      reducedMotion,
       custom,
       onHoverStart,
       onHoverEnd,
@@ -1382,6 +1411,10 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
     const [isPresent, safeToRemove] = usePresence();
     const presenceEnabled = typeof safeToRemove === "function";
     const instanceId = useId();
+    const prefersReducedMotion = useReducedMotion();
+    const reduceMotionActive =
+      reducedMotion === "always" ||
+      (reducedMotion === "user" && !!prefersReducedMotion);
 
     // Merge internal ref with forwarded ref
     const mergedRef = useCallback(
@@ -1692,10 +1725,12 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
       return false;
     }, [transition, resolvedVariants]);
 
-    const childDefaultTransition = useMemo(
-      () => stripOrchestration(transition),
-      [transition]
-    );
+    const childDefaultTransition = useMemo(() => {
+      if (reduceMotionActive) {
+        return { duration: 0, delay: 0 };
+      }
+      return stripOrchestration(transition);
+    }, [transition, reduceMotionActive]);
 
     const variantsByType = useMemo(
       () =>
@@ -1703,9 +1738,16 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
           resolvedVariants,
           targetType,
           childDefaultTransition,
-          delayScope
+          delayScope,
+          reduceMotionActive
         ),
-      [resolvedVariants, targetType, childDefaultTransition, delayScope]
+      [
+        resolvedVariants,
+        targetType,
+        childDefaultTransition,
+        delayScope,
+        reduceMotionActive,
+      ]
     );
 
     const exitTypes = useMemo(() => {
@@ -1762,8 +1804,9 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
         const localOrchestration = pickOrchestration(
           getVariantTransition(def)
         );
-        const transitionValue =
-          orchestrationTransition || localOrchestration
+        const transitionValue = reduceMotionActive
+          ? { duration: 0, delay: 0 }
+          : orchestrationTransition || localOrchestration
             ? {
                 ...(orchestrationTransition ?? {}),
                 ...(localOrchestration ?? {}),
@@ -1772,7 +1815,7 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
         result[key] = transitionValue ? { transition: transitionValue } : {};
       }
       return result;
-    }, [resolvedVariants, orchestrationTransition]);
+    }, [resolvedVariants, orchestrationTransition, reduceMotionActive]);
 
     const [activeVariant, setActiveVariant] = useState<string | undefined>(
       animateLabel
@@ -2130,6 +2173,20 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
       const def = resolvedVariants[variantName];
       if (!def) return;
 
+      if (reduceMotionActive) {
+        animateVariant(
+          splitResultRef.current,
+          def,
+          { duration: 0, delay: 0 },
+          optionsRef.current?.type,
+          isPresent,
+          delayScope,
+          custom,
+          true
+        );
+        return;
+      }
+
       const animations = animateVariant(
         splitResultRef.current,
         def,
@@ -2161,6 +2218,8 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
       transition,
       scrollProp,
       delayScope,
+      reduceMotionActive,
+      custom,
     ]);
 
     if (!isValidElement(children)) {
@@ -2194,7 +2253,11 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
         : undefined;
     const wrapperExit = shouldInheritVariants ? exitProp : undefined;
     const wrapperTransition =
-      shouldInheritVariants && hasVariants ? orchestrationTransition : undefined;
+      shouldInheritVariants && hasVariants
+        ? reduceMotionActive
+          ? { duration: 0, delay: 0 }
+          : orchestrationTransition
+        : undefined;
 
     function renderNode(node: SplitTextDataNode, key: string): ReactNode {
       if (node.type === "text") {
@@ -2299,7 +2362,7 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
 
     const Wrapper = getMotionComponent(Component);
 
-    return createElement(
+    const content = createElement(
       Wrapper,
       {
         ref: mergedRef,
@@ -2320,4 +2383,10 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
       },
       child
     );
+
+    if (reducedMotion) {
+      return createElement(MotionConfig, { reducedMotion }, content);
+    }
+
+    return content;
 }) as SplitTextComponent;
