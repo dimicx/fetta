@@ -1164,6 +1164,10 @@ interface SplitTextProps<TCustom = unknown> {
   scroll?: ScrollPropOptions;
   /** Variant to animate to on hover */
   whileHover?: string;
+  /** Variant to animate to on tap */
+  whileTap?: string;
+  /** Variant to animate to on focus */
+  whileFocus?: string;
   /** Reduced motion handling (matches MotionConfig reducedMotion) */
   reducedMotion?: "user" | "always" | "never";
   /** Custom data forwarded to function variants and AnimatePresence */
@@ -1394,6 +1398,8 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
       exit,
       scroll: scrollProp,
       whileHover,
+      whileTap,
+      whileFocus,
       reducedMotion,
       custom,
       onHoverStart,
@@ -1415,6 +1421,9 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
     const reduceMotionActive =
       reducedMotion === "always" ||
       (reducedMotion === "user" && !!prefersReducedMotion);
+    const [isHovered, setIsHovered] = useState(false);
+    const [isTapped, setIsTapped] = useState(false);
+    const [isFocused, setIsFocused] = useState(false);
 
     // Merge internal ref with forwarded ref
     const mergedRef = useCallback(
@@ -1820,13 +1829,27 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
     const [activeVariant, setActiveVariant] = useState<string | undefined>(
       animateLabel
     );
-    const [isHovered, setIsHovered] = useState(false);
 
     useEffect(() => {
       if (!hasHover) {
         setIsHovered(false);
       }
     }, [hasHover]);
+
+    const hasTap = !!(whileTap && hasVariants);
+    const hasFocus = !!(whileFocus && hasVariants);
+
+    useEffect(() => {
+      if (!hasTap) {
+        setIsTapped(false);
+      }
+    }, [hasTap]);
+
+    useEffect(() => {
+      if (!hasFocus) {
+        setIsFocused(false);
+      }
+    }, [hasFocus]);
 
     const exitTrackerRef = useRef({
       isPresent: true,
@@ -1884,6 +1907,36 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
       }
       onHoverEnd?.();
     }, [hasHover, onHoverEnd]);
+
+    const handleTapStart = useCallback(() => {
+      if (hasTap) {
+        setIsTapped(true);
+      }
+    }, [hasTap]);
+
+    const handleTapCancel = useCallback(() => {
+      if (hasTap) {
+        setIsTapped(false);
+      }
+    }, [hasTap]);
+
+    const handleTapEnd = useCallback(() => {
+      if (hasTap) {
+        setIsTapped(false);
+      }
+    }, [hasTap]);
+
+    const handleFocus = useCallback(() => {
+      if (hasFocus) {
+        setIsFocused(true);
+      }
+    }, [hasFocus]);
+
+    const handleBlur = useCallback(() => {
+      if (hasFocus) {
+        setIsFocused(false);
+      }
+    }, [hasFocus]);
 
     useEffect(() => {
       if (!hasVariants) return;
@@ -2230,10 +2283,16 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
     const counters = { char: 0, word: 0, line: 0 };
     const exitProp = exitLabel === false ? undefined : exitLabel;
     const hoverVariant = hasHover ? whileHover : undefined;
-    const displayVariant =
-      isHovered && hoverVariant ? hoverVariant : activeVariant;
+    const tapVariant = hasTap ? whileTap : undefined;
+    const focusVariant = hasFocus ? whileFocus : undefined;
+    const interactionVariant =
+      (isTapped && tapVariant) ||
+      (isFocused && focusVariant) ||
+      (isHovered && hoverVariant) ||
+      undefined;
+    const displayVariant = interactionVariant ?? activeVariant;
     const shouldInheritVariants =
-      hasOrchestrationVariants || !!whileScroll || hasHover;
+      hasOrchestrationVariants || !!whileScroll || hasHover || hasTap || hasFocus;
     const childInitial =
       shouldInheritVariants || initialLabel === undefined
         ? undefined
@@ -2380,6 +2439,11 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
         transition: wrapperTransition,
         onHoverStart: handleHoverStart,
         onHoverEnd: handleHoverEnd,
+        onTapStart: handleTapStart,
+        onTapCancel: handleTapCancel,
+        onTap: handleTapEnd,
+        onFocus: handleFocus,
+        onBlur: handleBlur,
       },
       child
     );
