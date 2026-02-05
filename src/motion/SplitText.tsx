@@ -9,6 +9,8 @@ import {
   isValidElement,
   ReactElement,
   ReactNode,
+  ForwardedRef,
+  RefAttributes,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -167,7 +169,7 @@ type VariantTarget = DOMKeyframesDefinition & {
 };
 
 /** Info passed to function variant callbacks */
-export interface VariantInfo {
+export interface VariantInfo<TCustom = unknown> {
   /** Relative index within nearest split parent (line > word > global) */
   index: number;
   /** Total elements in that parent group */
@@ -180,21 +182,27 @@ export interface VariantInfo {
   lineIndex: number;
   /** Parent word index (0 if words not split) */
   wordIndex: number;
+  /** User custom data passed to SplitText */
+  custom: TCustom | undefined;
   /** AnimatePresence presence state */
   isPresent: boolean;
 }
 
-type VariantResolver = (info: VariantInfo) => VariantTarget;
-type PerTypeVariant = VariantTarget | VariantResolver;
+type VariantResolver<TCustom = unknown> = (
+  info: VariantInfo<TCustom>
+) => VariantTarget;
+type PerTypeVariant<TCustom = unknown> =
+  | VariantTarget
+  | VariantResolver<TCustom>;
 
 /** A variant: flat target, flat function, per-type targets (static or function), with optional transition */
-type VariantDefinition =
+type VariantDefinition<TCustom = unknown> =
   | VariantTarget
-  | VariantResolver
+  | VariantResolver<TCustom>
   | {
-      chars?: PerTypeVariant;
-      words?: PerTypeVariant;
-      lines?: PerTypeVariant;
+      chars?: PerTypeVariant<TCustom>;
+      words?: PerTypeVariant<TCustom>;
+      lines?: PerTypeVariant<TCustom>;
       transition?: AnimationOptions;
     };
 
@@ -205,13 +213,15 @@ type DelayScope = "global" | "local";
 const ELEMENT_TYPE_KEYS: SplitTypeKey[] = ["chars", "words", "lines"];
 
 /** Detect per-type vs flat variant */
-type PerTypeVariants = Partial<
-  Record<SplitTypeKey, PerTypeVariant>
+type PerTypeVariants<TCustom = unknown> = Partial<
+  Record<SplitTypeKey, PerTypeVariant<TCustom>>
 > & {
   transition?: AnimationOptions;
 };
 
-function isPerTypeVariant(v: VariantDefinition): v is PerTypeVariants {
+function isPerTypeVariant<TCustom = unknown>(
+  v: VariantDefinition<TCustom>
+): v is PerTypeVariants<TCustom> {
   if (typeof v !== "object" || v === null) return false;
   return "chars" in v || "words" in v || "lines" in v;
 }
@@ -260,8 +270,8 @@ function hasOrchestration(transition?: AnimationOptions): boolean {
   return false;
 }
 
-function getVariantTransition(
-  def: VariantDefinition
+function getVariantTransition<TCustom = unknown>(
+  def: VariantDefinition<TCustom>
 ): AnimationOptions | undefined {
   if (typeof def !== "object" || def == null) return undefined;
   if ("transition" in def) {
@@ -270,11 +280,11 @@ function getVariantTransition(
   return undefined;
 }
 
-function withDefaultTransition(
-  target: PerTypeVariant,
+function withDefaultTransition<TCustom = unknown>(
+  target: PerTypeVariant<TCustom>,
   defaultTransition: AnimationOptions | undefined,
   delayScope: DelayScope
-): PerTypeVariant {
+): PerTypeVariant<TCustom> {
   const needsDelayResolution = (transition?: AnimationOptions): boolean => {
     const delay = transition?.delay as unknown;
     if (typeof delay === "function") return true;
@@ -284,7 +294,7 @@ function withDefaultTransition(
 
   const resolveDelay = (
     delay: AnimationOptions["delay"],
-    info: VariantInfo
+    info: VariantInfo<TCustom>
   ): number | undefined => {
     if (typeof delay === "function") {
       const [index, count] =
@@ -306,7 +316,7 @@ function withDefaultTransition(
   const mergeTransitions = (
     base: AnimationOptions | undefined,
     override: AnimationOptions | undefined,
-    info: VariantInfo
+    info: VariantInfo<TCustom>
   ): AnimationOptions | undefined => {
     const merged: AnimationOptions = {
       ...(base ?? {}),
@@ -326,7 +336,7 @@ function withDefaultTransition(
   };
 
   if (typeof target === "function") {
-    return (info: VariantInfo) => {
+    return (info: VariantInfo<TCustom>) => {
       const resolved = target(info);
       const transition = mergeTransitions(
         defaultTransition,
@@ -346,7 +356,7 @@ function withDefaultTransition(
     needsDelayResolution(defaultTransition) ||
     needsDelayResolution(target.transition)
   ) {
-    return (info: VariantInfo) => {
+    return (info: VariantInfo<TCustom>) => {
       const transition = mergeTransitions(
         defaultTransition,
         target.transition,
@@ -385,23 +395,25 @@ function getTargetType(
   return "lines";
 }
 
-function buildVariantsByType(
-  variants: Record<string, VariantDefinition> | undefined,
+function buildVariantsByType<TCustom = unknown>(
+  variants: Record<string, VariantDefinition<TCustom>> | undefined,
   targetType: SplitTypeKey,
   childDefaultTransition: AnimationOptions | undefined,
   delayScope: DelayScope
-): Partial<Record<SplitTypeKey, Record<string, PerTypeVariant>>> {
+): Partial<Record<SplitTypeKey, Record<string, PerTypeVariant<TCustom>>>> {
   if (!variants) return {};
 
-  const result: Partial<Record<SplitTypeKey, Record<string, PerTypeVariant>>> =
+  const result: Partial<
+    Record<SplitTypeKey, Record<string, PerTypeVariant<TCustom>>>
+  > = {};
     {};
 
   for (const [name, def] of Object.entries(variants)) {
-    const defaultTransition = isPerTypeVariant(def)
+    const defaultTransition = isPerTypeVariant<TCustom>(def)
       ? def.transition ?? childDefaultTransition
       : childDefaultTransition;
 
-    if (isPerTypeVariant(def)) {
+    if (isPerTypeVariant<TCustom>(def)) {
       for (const key of ELEMENT_TYPE_KEYS) {
         const perType = def[key];
         if (!perType) continue;
@@ -598,13 +610,14 @@ function buildIndexMaps(relations: RelationMaps): IndexMaps {
   };
 }
 
-function buildVariantInfo(
+function buildVariantInfo<TCustom = unknown>(
   elementType: SplitTypeKey,
   globalIndex: number,
   total: number,
   maps: IndexMaps,
-  isPresent: boolean
-): VariantInfo {
+  isPresent: boolean,
+  custom?: TCustom
+): VariantInfo<TCustom> {
   if (elementType === "chars") {
     const lineIndex = maps.charToLine.length
       ? maps.charToLine[globalIndex]
@@ -629,6 +642,7 @@ function buildVariantInfo(
       globalCount: total,
       lineIndex,
       wordIndex,
+      custom,
       isPresent,
     };
   }
@@ -649,6 +663,7 @@ function buildVariantInfo(
       globalCount: total,
       lineIndex,
       wordIndex: globalIndex,
+      custom,
       isPresent,
     };
   }
@@ -659,6 +674,7 @@ function buildVariantInfo(
     globalCount: total,
     lineIndex: globalIndex,
     wordIndex: 0,
+    custom,
     isPresent,
   };
 }
@@ -839,13 +855,14 @@ function buildIndexMapsDom(result: SplitTextElements): IndexMapsDom {
   };
 }
 
-function buildFnInfoFromDom(
+function buildFnInfoFromDom<TCustom = unknown>(
   elementType: SplitTypeKey,
   globalIndex: number,
   total: number,
   maps: IndexMapsDom,
-  isPresent: boolean
-): VariantInfo {
+  isPresent: boolean,
+  custom?: TCustom
+): VariantInfo<TCustom> {
   if (elementType === "chars") {
     const lineIndex = maps.charToLine.length
       ? maps.charToLine[globalIndex]
@@ -863,7 +880,16 @@ function buildFnInfoFromDom(
       : maps.charCountInWord.length
         ? maps.charCountInWord[globalIndex]
         : total;
-    return { index, count, globalIndex, globalCount: total, lineIndex, wordIndex, isPresent };
+    return {
+      index,
+      count,
+      globalIndex,
+      globalCount: total,
+      lineIndex,
+      wordIndex,
+      custom,
+      isPresent,
+    };
   }
   if (elementType === "words") {
     const lineIndex = maps.wordToLine.length
@@ -875,9 +901,27 @@ function buildFnInfoFromDom(
     const count = maps.wordCountInLine.length
       ? maps.wordCountInLine[globalIndex]
       : total;
-    return { index, count, globalIndex, globalCount: total, lineIndex, wordIndex: globalIndex, isPresent };
+    return {
+      index,
+      count,
+      globalIndex,
+      globalCount: total,
+      lineIndex,
+      wordIndex: globalIndex,
+      custom,
+      isPresent,
+    };
   }
-  return { index: globalIndex, count: total, globalIndex, globalCount: total, lineIndex: globalIndex, wordIndex: 0, isPresent };
+  return {
+    index: globalIndex,
+    count: total,
+    globalIndex,
+    globalCount: total,
+    lineIndex: globalIndex,
+    wordIndex: 0,
+    custom,
+    isPresent,
+  };
 }
 
 type MotionAnimation = ReturnType<typeof animate>;
@@ -890,14 +934,15 @@ type FnAnimationItem = {
   transition?: AnimationOptions;
 };
 
-function buildFnItems(
+function buildFnItems<TCustom = unknown>(
   elements: HTMLSpanElement[],
   elementType: SplitTypeKey,
-  fn: VariantResolver,
+  fn: VariantResolver<TCustom>,
   maps: IndexMapsDom,
   transition: AnimationOptions | undefined,
   isPresent: boolean,
-  delayScope: DelayScope
+  delayScope: DelayScope,
+  custom?: TCustom
 ): FnAnimationItem[] {
   const t = transition;
   const { delay: outerDelay, duration, ...rest } = t || {};
@@ -905,7 +950,14 @@ function buildFnItems(
   const total = elements.length;
 
   for (let i = 0; i < total; i++) {
-    const info = buildFnInfoFromDom(elementType, i, total, maps, isPresent);
+    const info = buildFnInfoFromDom(
+      elementType,
+      i,
+      total,
+      maps,
+      isPresent,
+      custom
+    );
     const { transition: localT, ...props } = fn(info);
     let merged: AnimationOptions = localT ? { ...rest, ...localT } : { ...rest };
     if (duration != null && merged.duration == null) {
@@ -936,13 +988,14 @@ function buildFnItems(
   return items;
 }
 
-function animateVariant(
+function animateVariant<TCustom = unknown>(
   result: SplitTextElements,
-  variant: VariantDefinition,
+  variant: VariantDefinition<TCustom>,
   globalTransition: AnimationOptions | undefined,
   type?: string,
   isPresent = true,
-  delayScope: DelayScope = "global"
+  delayScope: DelayScope = "global",
+  custom?: TCustom
 ): MotionAnimation[] {
   if (typeof variant === "function") {
     const targetType = getTargetTypeForElements(result, type);
@@ -956,7 +1009,8 @@ function animateVariant(
       maps,
       globalTransition,
       isPresent,
-      delayScope
+      delayScope,
+      custom
     );
     return items.map((item) =>
       animate(item.element, item.props, item.transition)
@@ -986,7 +1040,8 @@ function animateVariant(
             maps,
             localTransition,
             isPresent,
-            delayScope
+            delayScope,
+            custom
           );
           fnAnimations.push(
             ...items.map((item) =>
@@ -1025,7 +1080,7 @@ function animateVariant(
 // Props
 // ---------------------------------------------------------------------------
 
-interface SplitTextProps {
+interface SplitTextProps<TCustom = unknown> {
   children: ReactElement;
   /** The wrapper element type. Default: "div" */
   as?: keyof HTMLElementTagNameMap;
@@ -1064,18 +1119,18 @@ interface SplitTextProps {
   // --- Variant props ---
 
   /** Named variant definitions. Keys are variant names, values are animation targets. */
-  variants?: Record<string, VariantDefinition>;
+  variants?: Record<string, VariantDefinition<TCustom>>;
   /** Initial variant applied instantly after split (ignores transitions on mount). Set to false to skip. */
-  initial?: string | VariantDefinition | false;
+  initial?: string | VariantDefinition<TCustom> | false;
   /** Variant to animate to immediately after split */
-  animate?: string | VariantDefinition;
+  animate?: string | VariantDefinition<TCustom>;
   /** Variant to animate to when entering viewport */
   whileInView?: string;
   /** Variant to animate to when leaving viewport */
   whileOutOfView?: string;
   /** Variant to animate to on exit when used inside AnimatePresence.
    *  Accepts a variant name or a full variant definition. */
-  exit?: string | VariantDefinition | false;
+  exit?: string | VariantDefinition<TCustom> | false;
   /** Variant to scroll-animate to. Animation progress is driven by scroll position.
    *  Takes priority over `animate` and `whileInView`. */
   whileScroll?: string;
@@ -1083,6 +1138,8 @@ interface SplitTextProps {
   scroll?: ScrollPropOptions;
   /** Variant to animate to on hover */
   whileHover?: string;
+  /** Custom data forwarded to function variants and AnimatePresence */
+  custom?: TCustom;
   /** Called when hover starts */
   onHoverStart?: () => void;
   /** Called when hover ends */
@@ -1229,13 +1286,14 @@ function collectSplitElements(
   return { chars, words, lines, revert: () => {} };
 }
 
-function buildVariantInfos(
+function buildVariantInfos<TCustom = unknown>(
   data: SplitTextData | null,
-  isPresent: boolean
+  isPresent: boolean,
+  custom?: TCustom
 ): {
-  charInfos: VariantInfo[];
-  wordInfos: VariantInfo[];
-  lineInfos: VariantInfo[];
+  charInfos: VariantInfo<TCustom>[];
+  wordInfos: VariantInfo<TCustom>[];
+  lineInfos: VariantInfo<TCustom>[];
   counts: { chars: number; words: number; lines: number };
 } {
   if (!data) {
@@ -1254,17 +1312,17 @@ function buildVariantInfos(
   const charInfos = new Array(chars)
     .fill(0)
     .map((_, index) =>
-      buildVariantInfo("chars", index, chars, maps, isPresent)
+      buildVariantInfo("chars", index, chars, maps, isPresent, custom)
     );
   const wordInfos = new Array(words)
     .fill(0)
     .map((_, index) =>
-      buildVariantInfo("words", index, words, maps, isPresent)
+      buildVariantInfo("words", index, words, maps, isPresent, custom)
     );
   const lineInfos = new Array(lines)
     .fill(0)
     .map((_, index) =>
-      buildVariantInfo("lines", index, lines, maps, isPresent)
+      buildVariantInfo("lines", index, lines, maps, isPresent, custom)
     );
 
   return {
@@ -1278,9 +1336,12 @@ function buildVariantInfos(
 /**
  * Motion-enabled SplitText component.
  */
-export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
-  function SplitText(
-    {
+type SplitTextComponent = <TCustom = unknown>(
+  props: SplitTextProps<TCustom> & RefAttributes<HTMLElement>
+) => ReactElement | null;
+
+export const SplitText = forwardRef(function SplitText<TCustom>(
+  {
       children,
       as: Component = "div",
       className,
@@ -1305,13 +1366,14 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
       exit,
       scroll: scrollProp,
       whileHover,
+      custom,
       onHoverStart,
       onHoverEnd,
       transition,
       delayScope = "global",
-    },
-    forwardedRef
-  ) {
+    }: SplitTextProps<TCustom>,
+  forwardedRef: ForwardedRef<HTMLElement>
+) {
     const containerRef = useRef<HTMLElement>(null);
     const [childElement, setChildElement] = useState<HTMLElement | null>(null);
     const [data, setData] = useState<SplitTextData | null>(null);
@@ -1361,17 +1423,18 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
       if (!variants && !inlineInitialVariant && !inlineAnimateVariant && !inlineExitVariant) {
         return variants;
       }
-      const merged: Record<string, VariantDefinition> = {
+      const merged: Record<string, VariantDefinition<TCustom>> = {
         ...(variants ?? {}),
       };
       if (inlineInitialVariant) {
-        merged.__fetta_initial__ = initialVariant as VariantDefinition;
+        merged.__fetta_initial__ = initialVariant as VariantDefinition<TCustom>;
       }
       if (inlineAnimateVariant) {
-        merged.__fetta_animate__ = animateVariantName as VariantDefinition;
+        merged.__fetta_animate__ =
+          animateVariantName as VariantDefinition<TCustom>;
       }
       if (inlineExitVariant) {
-        merged.__fetta_exit__ = exit as VariantDefinition;
+        merged.__fetta_exit__ = exit as VariantDefinition<TCustom>;
       }
       return merged;
     }, [
@@ -1606,8 +1669,8 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
 
     // Build VariantInfo arrays for function variants
     const variantInfo = useMemo(
-      () => buildVariantInfos(data, isPresent),
-      [data, isPresent]
+      () => buildVariantInfos(data, isPresent, custom),
+      [data, isPresent, custom]
     );
 
     const targetType = useMemo(() => {
@@ -1650,8 +1713,8 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
       if (!exitKey) return [] as SplitTypeKey[];
       const types: SplitTypeKey[] = [];
       for (const key of ELEMENT_TYPE_KEYS) {
-        const defs = (variantsByType as Partial<
-          Record<SplitTypeKey, Record<string, PerTypeVariant>>
+      const defs = (variantsByType as Partial<
+          Record<SplitTypeKey, Record<string, PerTypeVariant<TCustom>>>
         >)[key];
         if (defs && exitKey in defs) {
           types.push(key);
@@ -1665,8 +1728,8 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
       if (!animateKey) return [] as SplitTypeKey[];
       const types: SplitTypeKey[] = [];
       for (const key of ELEMENT_TYPE_KEYS) {
-        const defs = (variantsByType as Partial<
-          Record<SplitTypeKey, Record<string, PerTypeVariant>>
+      const defs = (variantsByType as Partial<
+          Record<SplitTypeKey, Record<string, PerTypeVariant<TCustom>>>
         >)[key];
         if (defs && animateKey in defs) {
           types.push(key);
@@ -2073,7 +2136,8 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
         transition,
         optionsRef.current?.type,
         isPresent,
-        delayScope
+        delayScope,
+        custom
       );
 
       const scrollOpts = scrollProp;
@@ -2160,7 +2224,7 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
         const MotionTag = getMotionComponent(node.tag);
         const variantsForType = (variantsByType as Record<string, unknown>)[
           splitType
-        ] as Record<string, PerTypeVariant> | undefined;
+        ] as Record<string, PerTypeVariant<TCustom>> | undefined;
         const needsExitTracking =
           presenceEnabled &&
           typeof exitLabel === "string" &&
@@ -2248,6 +2312,7 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
         variants: wrapperVariants,
         initial: wrapperInitial,
         animate: wrapperAnimate,
+        custom,
         exit: wrapperExit,
         transition: wrapperTransition,
         onHoverStart: handleHoverStart,
@@ -2255,5 +2320,4 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
       },
       child
     );
-  }
-);
+}) as SplitTextComponent;
