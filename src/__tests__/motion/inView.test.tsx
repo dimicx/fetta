@@ -243,4 +243,90 @@ describe("SplitText viewport (motion)", () => {
       expect(container.querySelectorAll(".split-word").length).toBeGreaterThan(0);
     });
   });
+
+  it("re-runs onSplit effect when variants are added after initial split", async () => {
+    const onSplit = vi.fn();
+
+    const { rerender } = render(
+      <SplitText onSplit={onSplit}>
+        <p>Hello World</p>
+      </SplitText>
+    );
+
+    await waitFor(() => {
+      expect(onSplit.mock.calls.length).toBeGreaterThan(0);
+    });
+    const baselineCalls = onSplit.mock.calls.length;
+
+    rerender(
+      <SplitText
+        onSplit={onSplit}
+        variants={{
+          show: { opacity: 1 },
+        }}
+      >
+        <p>Hello World</p>
+      </SplitText>
+    );
+
+    await waitFor(() => {
+      expect(onSplit.mock.calls.length).toBeGreaterThan(baselineCalls);
+    });
+  });
+
+  it("re-runs viewport leave effect with latest hasVariants value", async () => {
+    const onViewportLeave = vi.fn();
+
+    const { rerender } = render(
+      <SplitText viewport={{ amount: 0.2 }} onViewportLeave={onViewportLeave}>
+        <p>Hello World</p>
+      </SplitText>
+    );
+
+    await waitFor(() => {
+      const observer = getLastIntersectionObserver();
+      expect(observer).not.toBeNull();
+    });
+
+    const observer = getLastIntersectionObserver();
+
+    act(() => {
+      observer?.trigger([
+        {
+          isIntersecting: true,
+          intersectionRatio: 1,
+        },
+      ]);
+    });
+
+    act(() => {
+      observer?.trigger([
+        {
+          isIntersecting: false,
+          intersectionRatio: 0,
+        },
+      ]);
+    });
+
+    await waitFor(() => {
+      expect(onViewportLeave).toHaveBeenCalledTimes(1);
+    });
+    const baselineCalls = onViewportLeave.mock.calls.length;
+
+    rerender(
+      <SplitText
+        viewport={{ amount: 0.2 }}
+        onViewportLeave={onViewportLeave}
+        variants={{
+          show: { opacity: 1 },
+        }}
+      >
+        <p>Hello World</p>
+      </SplitText>
+    );
+
+    await waitFor(() => {
+      expect(onViewportLeave.mock.calls.length).toBeGreaterThan(baselineCalls);
+    });
+  });
 });

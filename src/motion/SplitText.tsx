@@ -151,7 +151,6 @@ type VariantDefinition<TCustom = unknown> =
     };
 
 type SplitTypeKey = "chars" | "words" | "lines";
-type SplitRole = "char" | "word" | "line";
 type DelayScope = "global" | "local";
 
 const ELEMENT_TYPE_KEYS: SplitTypeKey[] = ["chars", "words", "lines"];
@@ -1939,7 +1938,7 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
       }
 
       return undefined;
-    }, [data, childElement, needsViewport]);
+    }, [data, childElement, needsViewport, hasVariants]);
 
     useEffect(() => {
       if (!needsViewport) {
@@ -2109,7 +2108,7 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
           onViewportLeaveRef.current(splitResultRef.current);
         }
       }
-    }, [isInView, needsViewport]);
+    }, [isInView, needsViewport, hasVariants]);
 
     useEffect(() => {
       if (!whileScroll) return;
