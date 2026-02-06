@@ -1886,9 +1886,9 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
       const splitElements = collectSplitElements(childElement, optionsRef.current);
       const revert = () => {
         if (hasRevertedRef.current) return;
-        if (originalHTMLRef.current && childElement) {
-          childElement.innerHTML = originalHTMLRef.current;
-        }
+        // Do not mutate childElement.innerHTML here.
+        // React owns this subtree; imperative DOM replacement can desync
+        // reconciliation and cause NotFoundError on unmount/removal.
         hasRevertedRef.current = true;
         setData(null);
         setIsReady(true);
