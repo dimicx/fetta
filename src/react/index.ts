@@ -1,3 +1,6 @@
 export { SplitText } from "./SplitText";
-export type { SplitTextElements } from "./SplitText";
-export type { SplitTextOptions, SplitTextResult } from "../core/splitText";
+export type { SplitTextElements, SplitTextOptions } from "./SplitText";
+export type {
+  SplitTextOptions as CoreSplitTextOptions,
+  SplitTextResult,
+} from "../core/splitText";

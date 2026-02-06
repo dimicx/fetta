@@ -28,7 +28,7 @@ import {
 } from "react";
 import type { SplitTextData, SplitTextDataNode } from "../core/splitText";
 
-interface SplitTextOptions {
+export interface SplitTextOptions {
   type?:
     | "chars"
     | "words"

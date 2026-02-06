@@ -17,7 +17,7 @@ import {
   useState,
 } from "react";
 
-interface SplitTextOptions {
+export interface SplitTextOptions {
   type?:
     | "chars"
     | "words"
