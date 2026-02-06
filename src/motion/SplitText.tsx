@@ -907,6 +907,7 @@ type ControlledWrapperMotionKeys =
   | "custom"
   | "onViewportEnter"
   | "onViewportLeave"
+  | "onRevert"
   | "onHoverStart"
   | "onHoverEnd";
 
@@ -941,6 +942,8 @@ interface SplitTextProps<TCustom = unknown> extends WrapperMotionProps {
   onViewportEnter?: (result: SplitTextElements) => CallbackReturn;
   /** Called when element leaves viewport (replaces `onLeaveView`) */
   onViewportLeave?: (result: SplitTextElements) => CallbackReturn;
+  /** Called when split text is reverted (manual or automatic) */
+  onRevert?: () => void;
   /** Apply initial inline styles to elements after split (and after kerning compensation).
    * Can be a static style object or a function that receives (element, index). */
   initialStyles?: InitialStyles;
@@ -1197,6 +1200,7 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
       viewport,
       onViewportEnter,
       onViewportLeave,
+      onRevert,
       initialStyles,
       initialClasses,
       resetOnViewportLeave = false,
@@ -1324,6 +1328,7 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
     const viewportRef = useRef(viewport);
     const onViewportEnterRef = useRef(onViewportEnter);
     const onViewportLeaveRef = useRef(onViewportLeave);
+    const onRevertRef = useRef(onRevert);
     const initialStylesRef = useRef(initialStyles);
     const initialClassesRef = useRef(initialClasses);
     const resetOnViewportLeaveRef = useRef(resetOnViewportLeave);
@@ -1342,6 +1347,7 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
       viewportRef.current = viewport;
       onViewportEnterRef.current = onViewportEnter;
       onViewportLeaveRef.current = onViewportLeave;
+      onRevertRef.current = onRevert;
       initialStylesRef.current = initialStyles;
       initialClassesRef.current = initialClasses;
       resetOnViewportLeaveRef.current = resetOnViewportLeave;
@@ -1886,12 +1892,16 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
       const splitElements = collectSplitElements(childElement, optionsRef.current);
       const revert = () => {
         if (hasRevertedRef.current) return;
-        // Do not mutate childElement.innerHTML here.
-        // React owns this subtree; imperative DOM replacement can desync
-        // reconciliation and cause NotFoundError on unmount/removal.
         hasRevertedRef.current = true;
-        setData(null);
-        setIsReady(true);
+        try {
+          onRevertRef.current?.();
+        } finally {
+          // Do not mutate childElement.innerHTML here.
+          // React owns this subtree; imperative DOM replacement can desync
+          // reconciliation and cause NotFoundError on unmount/removal.
+          setData(null);
+          setIsReady(true);
+        }
       };
 
       splitResultRef.current = { ...splitElements, revert };

@@ -182,8 +182,9 @@ describe("SplitText React Component", () => {
   });
 
   it("reverts on unmount", async () => {
+    const onRevert = vi.fn();
     const { unmount, container } = render(
-      <SplitText>
+      <SplitText onRevert={onRevert}>
         <p id="test-element">Hello</p>
       </SplitText>
     );
@@ -197,9 +198,11 @@ describe("SplitText React Component", () => {
 
     // After unmount, the element should be cleaned up from container
     expect(container.querySelector("#test-element")).toBeNull();
+    expect(onRevert).toHaveBeenCalledTimes(1);
   });
 
   it("handles revertOnComplete with animation promise", async () => {
+    const onRevert = vi.fn();
     let resolveAnimation: () => void;
     const animationPromise = new Promise<void>((resolve) => {
       resolveAnimation = resolve;
@@ -209,6 +212,7 @@ describe("SplitText React Component", () => {
       <SplitText
         onSplit={() => ({ finished: animationPromise })}
         revertOnComplete
+        onRevert={onRevert}
       >
         <p>Hello</p>
       </SplitText>
@@ -230,6 +234,45 @@ describe("SplitText React Component", () => {
       // After revert, text should be back to original
       expect(p?.textContent).toBe("Hello");
     });
+    expect(onRevert).toHaveBeenCalledTimes(1);
+  });
+
+  it("fires onRevert once when revert is called manually", async () => {
+    const onRevert = vi.fn();
+    let splitResult: {
+      revert: () => void;
+    } | null = null;
+
+    const { container } = render(
+      <SplitText
+        onSplit={(result) => {
+          splitResult = result;
+        }}
+        onRevert={onRevert}
+      >
+        <p>Hello</p>
+      </SplitText>
+    );
+
+    await waitFor(() => {
+      expect(splitResult).not.toBeNull();
+      expect(container.querySelectorAll(".split-char").length).toBeGreaterThan(0);
+    });
+
+    act(() => {
+      splitResult?.revert();
+    });
+
+    await waitFor(() => {
+      expect(container.querySelectorAll(".split-char").length).toBe(0);
+    });
+
+    expect(onRevert).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      splitResult?.revert();
+    });
+    expect(onRevert).toHaveBeenCalledTimes(1);
   });
 
   it("does not double-split in StrictMode", async () => {

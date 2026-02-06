@@ -48,7 +48,7 @@ vi.mock("motion/react", async () => {
   };
 });
 
-import { SplitText } from "../../motion/SplitText";
+import { SplitText, type SplitTextElements } from "../../motion/SplitText";
 
 function getMotionByClass(className: string) {
   return motionElements.filter((entry) => {
@@ -66,12 +66,14 @@ describe("SplitText revertOnComplete (motion)", () => {
     cleanup();
   });
 
-  it("reverts after all split elements complete", async () => {
+  it("reverts after all split elements complete and fires onRevert once", async () => {
+    const onRevert = vi.fn();
     const { container } = render(
       <SplitText
         variants={{ show: { opacity: 1 } }}
         animate="show"
         revertOnComplete
+        onRevert={onRevert}
         options={{ type: "words" }}
       >
         <p>Hello world</p>
@@ -94,6 +96,7 @@ describe("SplitText revertOnComplete (motion)", () => {
     await waitFor(() => {
       expect(container.querySelectorAll(".split-word").length).toBeGreaterThan(0);
     });
+    expect(onRevert).not.toHaveBeenCalled();
 
     act(() => {
       for (const entry of words) {
@@ -107,5 +110,79 @@ describe("SplitText revertOnComplete (motion)", () => {
     await waitFor(() => {
       expect(container.querySelectorAll(".split-word").length).toBe(0);
     });
+    expect(onRevert).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      for (const entry of words) {
+        const handler = entry.props.onAnimationComplete as
+          | ((definition?: string | object) => void)
+          | undefined;
+        handler?.("show");
+      }
+    });
+
+    expect(onRevert).toHaveBeenCalledTimes(1);
+  });
+
+  it("fires onRevert once when callback-mode revertOnComplete resolves", async () => {
+    const onRevert = vi.fn();
+    let resolveAnimation: () => void;
+    const animationPromise = new Promise<void>((resolve) => {
+      resolveAnimation = resolve;
+    });
+
+    const { container } = render(
+      <SplitText
+        onSplit={() => ({ finished: animationPromise })}
+        revertOnComplete
+        onRevert={onRevert}
+      >
+        <p>Hello</p>
+      </SplitText>
+    );
+
+    await waitFor(() => {
+      expect(container.querySelectorAll(".split-char").length).toBeGreaterThan(0);
+    });
+
+    await act(async () => {
+      resolveAnimation!();
+      await animationPromise;
+    });
+
+    await waitFor(() => {
+      expect(container.querySelectorAll(".split-char").length).toBe(0);
+    });
+    expect(onRevert).toHaveBeenCalledTimes(1);
+  });
+
+  it("fires onRevert once when revert is called manually", async () => {
+    const onRevert = vi.fn();
+    let splitResult: SplitTextElements | null = null;
+
+    const { container } = render(
+      <SplitText onSplit={(result) => { splitResult = result; }} onRevert={onRevert}>
+        <p>Hello</p>
+      </SplitText>
+    );
+
+    await waitFor(() => {
+      expect(splitResult).not.toBeNull();
+      expect(container.querySelectorAll(".split-char").length).toBeGreaterThan(0);
+    });
+
+    act(() => {
+      splitResult?.revert();
+    });
+
+    await waitFor(() => {
+      expect(container.querySelectorAll(".split-char").length).toBe(0);
+    });
+    expect(onRevert).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      splitResult?.revert();
+    });
+    expect(onRevert).toHaveBeenCalledTimes(1);
   });
 });

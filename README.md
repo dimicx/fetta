@@ -159,6 +159,7 @@ import { AnimatePresence } from "motion/react";
 | `autoSplit` | `boolean` | `false` | Re-split on container resize |
 | `waitForFonts` | `boolean` | `true` | Wait for `document.fonts.ready` before splitting (recommended for stable kerning). Set `false` for immediate split. |
 | `revertOnComplete` | `boolean` | `false` | Revert after animation completes |
+| `onRevert` | `() => void` | — | Called when split text is reverted (manual or automatic) |
 | `viewport` | `ViewportOptions` | — | Configure viewport detection |
 | `onViewportEnter` | `(result) => void` | — | Called when element enters viewport |
 | `onViewportLeave` | `(result) => void` | — | Called when element leaves viewport |
@@ -178,6 +179,8 @@ All callbacks (`onSplit`, `onResize`, `onViewportEnter`, `onViewportLeave`) rece
   revert: () => void;
 }
 ```
+
+`onRevert` is a separate zero-argument callback that fires when a split cycle actually reverts.
 
 #### Viewport Options
 

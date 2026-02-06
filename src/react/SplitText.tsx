@@ -94,6 +94,7 @@ type ControlledWrapperHTMLKeys =
   | "viewport"
   | "onViewportEnter"
   | "onViewportLeave"
+  | "onRevert"
   | "initialStyles"
   | "initialClasses"
   | "resetOnViewportLeave"
@@ -129,6 +130,8 @@ interface SplitTextProps extends WrapperHTMLProps {
   onViewportEnter?: (result: SplitTextElements) => CallbackReturn;
   /** Called when element leaves viewport (replaces `onLeaveView`) */
   onViewportLeave?: (result: SplitTextElements) => CallbackReturn;
+  /** Called when split text is reverted (manual or automatic) */
+  onRevert?: () => void;
   /** Apply initial inline styles to elements after split (and after kerning compensation).
    * Can be a static style object or a function that receives (element, index). */
   initialStyles?: InitialStyles;
@@ -183,6 +186,7 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
       viewport,
       onViewportEnter,
       onViewportLeave,
+      onRevert,
       initialStyles,
       initialClasses,
       resetOnViewportLeave = false,
@@ -225,6 +229,7 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
     const viewportRef = useRef(viewport);
     const onViewportEnterRef = useRef(onViewportEnter);
     const onViewportLeaveRef = useRef(onViewportLeave);
+    const onRevertRef = useRef(onRevert);
     const initialStylesRef = useRef(initialStyles);
     const initialClassesRef = useRef(initialClasses);
     const resetOnViewportLeaveRef = useRef(resetOnViewportLeave);
@@ -237,6 +242,7 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
       viewportRef.current = viewport;
       onViewportEnterRef.current = onViewportEnter;
       onViewportLeaveRef.current = onViewportLeave;
+      onRevertRef.current = onRevert;
       initialStylesRef.current = initialStyles;
       initialClassesRef.current = initialClasses;
       resetOnViewportLeaveRef.current = resetOnViewportLeave;
@@ -266,6 +272,17 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
         if (!isMounted || hasSplitRef.current) return;
         if (!containerRef.current) return;
 
+        let coreRevert: (() => void) | null = null;
+        const revert = () => {
+          if (hasRevertedRef.current) return;
+          hasRevertedRef.current = true;
+          try {
+            onRevertRef.current?.();
+          } finally {
+            coreRevert?.();
+          }
+        };
+
         // Use core splitText with autoSplit feature
         const result = splitText(childElement, {
           ...optionsRef.current,
@@ -274,20 +291,21 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
           initialStyles: initialStylesRef.current,
           initialClasses: initialClassesRef.current,
           onResize: (resizeResult) => {
-            // Update stored result with new elements but same revert
+            // Update stored result with new elements but same wrapped revert.
             const newSplitTextElements: SplitTextElements = {
               chars: resizeResult.chars,
               words: resizeResult.words,
               lines: resizeResult.lines,
-              revert: result.revert,
+              revert,
             };
             splitResultRef.current = newSplitTextElements;
             onResizeRef.current?.(newSplitTextElements);
           },
         });
+        coreRevert = result.revert;
 
         // Store revert function for cleanup
-        revertFnRef.current = result.revert;
+        revertFnRef.current = revert;
 
         hasSplitRef.current = true;
 
@@ -296,7 +314,7 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
           chars: result.chars,
           words: result.words,
           lines: result.lines,
-          revert: result.revert,
+          revert,
         };
         splitResultRef.current = splitElements;
 
@@ -314,8 +332,7 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
               promise
                 .then(() => {
                   if (!isMounted || hasRevertedRef.current) return;
-                  result.revert();
-                  hasRevertedRef.current = true;
+                  splitElements.revert();
                 })
                 .catch(() => {
                   console.warn("[fetta] Animation rejected, text not reverted");
@@ -418,7 +435,6 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
             .then(() => {
               if (hasRevertedRef.current) return;
               splitResultRef.current?.revert();
-              hasRevertedRef.current = true;
             })
             .catch(() => {
               console.warn("[fetta] Animation rejected, text not reverted");

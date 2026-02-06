@@ -263,6 +263,7 @@ describe("SplitText viewport", () => {
   });
 
   it("reverts after onViewportEnter animation completes with revertOnComplete", async () => {
+    const onRevert = vi.fn();
     let resolveAnimation: () => void;
     const animationPromise = new Promise<void>((resolve) => {
       resolveAnimation = resolve;
@@ -273,6 +274,7 @@ describe("SplitText viewport", () => {
         viewport={{}}
         onViewportEnter={() => ({ finished: animationPromise })}
         revertOnComplete
+        onRevert={onRevert}
       >
         <p>Hello</p>
       </SplitText>
@@ -309,6 +311,7 @@ describe("SplitText viewport", () => {
       const p = container.querySelector("p");
       expect(p?.textContent).toBe("Hello");
     });
+    expect(onRevert).toHaveBeenCalledTimes(1);
   });
 
   it("disconnects IntersectionObserver on unmount", async () => {
