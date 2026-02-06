@@ -17,7 +17,7 @@ Split text into characters, words, and lines while preserving the original typog
 - **Accessible** — Automatic screen reader support, even when splitting text with nested links or emphasis
 - **TypeScript** — Full type definitions included
 - **React Component** — Declarative wrapper for React projects
-- **Built-in InView** — Viewport detection for scroll-triggered animations in React
+- **Built-in Viewport** — Viewport detection for scroll-triggered animations in React
 - **Library Agnostic** — Works with Motion, GSAP, or any animation library
 
 ## Installation
@@ -117,6 +117,8 @@ For Motion variants:
 import { SplitText } from 'fetta/motion';
 ```
 
+`fetta/motion` forwards standard Motion/DOM wrapper props (`id`, `role`, `tabIndex`, `layout`, `drag`, `data-*`, etc.). Split lifecycle props (`variants`, `initial`, `animate`, `exit`, `while*`, `viewport`, `transition`, callbacks) still control animation behavior.
+
 Animate on exit with Motion's `AnimatePresence` (make `SplitText` the direct child):
 
 ```tsx
@@ -155,16 +157,16 @@ import { AnimatePresence } from "motion/react";
 | `autoSplit` | `boolean` | `false` | Re-split on container resize |
 | `waitForFonts` | `boolean` | `true` | Wait for `document.fonts.ready` before splitting (recommended for stable kerning). Set `false` for immediate split. |
 | `revertOnComplete` | `boolean` | `false` | Revert after animation completes |
-| `inView` | `boolean \| InViewOptions` | `false` | Enable viewport detection |
-| `onInView` | `(result) => void` | — | Called when element enters viewport |
-| `onLeaveView` | `(result) => void` | — | Called when element leaves viewport |
+| `viewport` | `ViewportOptions` | — | Configure viewport detection |
+| `onViewportEnter` | `(result) => void` | — | Called when element enters viewport |
+| `onViewportLeave` | `(result) => void` | — | Called when element leaves viewport |
 | `initialStyles` | `object` | — | Apply initial inline styles to chars/words/lines. Values can be objects or `(el, index) => object` functions |
 | `initialClasses` | `object` | — | Apply initial CSS classes to chars/words/lines. Values can be strings or `(el, index) => string` functions |
 | `resetOnViewportLeave` | `boolean` | `false` | Re-apply initialStyles/initialClasses when leaving viewport |
 
 #### Callback Signature
 
-All callbacks (`onSplit`, `onResize`, `onInView`, `onLeaveView`) receive the same result object:
+All callbacks (`onSplit`, `onResize`, `onViewportEnter`, `onViewportLeave`) receive the same result object:
 
 ```ts
 {
@@ -175,13 +177,15 @@ All callbacks (`onSplit`, `onResize`, `onInView`, `onLeaveView`) receive the sam
 }
 ```
 
-#### InView Options
+#### Viewport Options
 
 ```ts
 {
-  amount?: number;   // How much must be visible (0-1), default: 0
-  margin?: string;   // Root margin, default: "0px"
-  once?: boolean;    // Only trigger once, default: false
+  amount?: number | "some" | "all"; // Enter threshold, default: 0
+  leave?: number | "some" | "all";  // Leave threshold, default: 0
+  margin?: string;                  // Root margin, default: "0px"
+  once?: boolean;                   // Only trigger once, default: false
+  root?: RefObject<Element>;        // Optional root element
 }
 ```
 
@@ -276,7 +280,7 @@ splitText(element, { type: 'chars', propIndex: true });
 </SplitText>
 ```
 
-#### Scroll-Triggered with InView
+#### Scroll-Triggered with Viewport
 
 ```tsx
 <SplitText
@@ -284,8 +288,8 @@ splitText(element, { type: 'chars', propIndex: true });
   initialStyles={{
     words: { opacity: '0', transform: 'translateY(20px)' }
   }}
-  inView={{ amount: 0.5 }}
-  onInView={({ words }) => {
+  viewport={{ amount: 0.5 }}
+  onViewportEnter={({ words }) => {
     animate(words, { opacity: 1, y: 0 }, { delay: stagger(0.03) });
   }}
   resetOnViewportLeave

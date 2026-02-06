@@ -9,6 +9,7 @@ import { waitForFontsReady } from "../internal/waitForFontsReady";
 import { animate, scroll } from "motion";
 import { MotionConfig, motion, usePresence, useReducedMotion } from "motion/react";
 import type { AnimationOptions, DOMKeyframesDefinition } from "motion";
+import type { HTMLMotionProps } from "motion/react";
 import {
   createElement,
   forwardRef,
@@ -631,7 +632,9 @@ function getTargetElements(
   if (type?.includes("chars") && result.chars.length) return result.chars;
   if (type?.includes("words") && result.words.length) return result.words;
   if (type?.includes("lines") && result.lines.length) return result.lines;
-  return result.words;
+  if (result.chars.length) return result.chars;
+  if (result.words.length) return result.words;
+  return result.lines;
 }
 
 /** Get most granular element type name for flat variants */
@@ -642,7 +645,9 @@ function getTargetTypeForElements(
   if (type?.includes("chars") && result.chars.length) return "chars";
   if (type?.includes("words") && result.words.length) return "words";
   if (type?.includes("lines") && result.lines.length) return "lines";
-  return "words";
+  if (result.chars.length) return "chars";
+  if (result.words.length) return "words";
+  return "lines";
 }
 
 /** Separate transition from animation props in a variant definition */
@@ -886,7 +891,32 @@ function animateVariant<TCustom = unknown>(
 // Props
 // ---------------------------------------------------------------------------
 
-interface SplitTextProps<TCustom = unknown> {
+type ControlledWrapperMotionKeys =
+  | "children"
+  | "className"
+  | "style"
+  | "ref"
+  | "variants"
+  | "initial"
+  | "animate"
+  | "exit"
+  | "whileInView"
+  | "whileHover"
+  | "whileTap"
+  | "whileFocus"
+  | "transition"
+  | "custom"
+  | "onViewportEnter"
+  | "onViewportLeave"
+  | "onHoverStart"
+  | "onHoverEnd";
+
+type WrapperMotionProps = Omit<
+  HTMLMotionProps<"div">,
+  ControlledWrapperMotionKeys
+>;
+
+interface SplitTextProps<TCustom = unknown> extends WrapperMotionProps {
   children: ReactElement;
   /** The wrapper element type. Default: "div" */
   as?: keyof HTMLElementTagNameMap;
@@ -1189,6 +1219,7 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
       onHoverEnd,
       transition,
       delayScope = "global",
+      ...wrapperProps
     }: SplitTextProps<TCustom>,
   forwardedRef: ForwardedRef<HTMLElement>
 ) {
@@ -1641,7 +1672,12 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
       reduceMotionActive,
       wrapperVariantsByName,
       custom,
+      transition,
     ]);
+    const hasWrapperExitVariant =
+      typeof exitLabel === "string" && !!wrapperVariantsByName[exitLabel];
+    const trackedExitCount =
+      exitTotalCount + (hasWrapperExitVariant ? 1 : 0);
 
     const [activeVariant, setActiveVariant] = useState<string | undefined>(
       animateLabel
@@ -1655,6 +1691,15 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
 
     const hasTap = !!(whileTap && hasVariants);
     const hasFocus = !!(whileFocus && hasVariants);
+    const {
+      onTapStart: userOnTapStart,
+      onTapCancel: userOnTapCancel,
+      onTap: userOnTap,
+      onFocus: userOnFocus,
+      onBlur: userOnBlur,
+      onAnimationComplete: userOnAnimationComplete,
+      ...passthroughWrapperProps
+    } = wrapperProps;
 
     useEffect(() => {
       if (!hasTap) {
@@ -1688,13 +1733,19 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
       const tracker = exitTrackerRef.current;
       tracker.session += 1;
       tracker.completed = 0;
-      tracker.total = exitTotalCount;
+      tracker.total = trackedExitCount;
 
       if (isPresent) return;
-      if (!exitLabel || exitTotalCount === 0) {
+      if (!exitLabel || trackedExitCount === 0) {
         safeToRemove?.();
       }
-    }, [presenceEnabled, isPresent, exitLabel, exitTotalCount, safeToRemove]);
+    }, [
+      presenceEnabled,
+      isPresent,
+      exitLabel,
+      trackedExitCount,
+      safeToRemove,
+    ]);
 
     const handleExitComplete = useCallback(
       (definition?: string | VariantTarget) => {
@@ -1725,35 +1776,66 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
       onHoverEnd?.();
     }, [hasHover, onHoverEnd]);
 
-    const handleTapStart = useCallback(() => {
+    const handleTapStart = useCallback((...args: unknown[]) => {
       if (hasTap) {
         setIsTapped(true);
       }
-    }, [hasTap]);
+      if (typeof userOnTapStart === "function") {
+        (userOnTapStart as (...callbackArgs: unknown[]) => void)(...args);
+      }
+    }, [hasTap, userOnTapStart]);
 
-    const handleTapCancel = useCallback(() => {
+    const handleTapCancel = useCallback((...args: unknown[]) => {
       if (hasTap) {
         setIsTapped(false);
       }
-    }, [hasTap]);
+      if (typeof userOnTapCancel === "function") {
+        (userOnTapCancel as (...callbackArgs: unknown[]) => void)(...args);
+      }
+    }, [hasTap, userOnTapCancel]);
 
-    const handleTapEnd = useCallback(() => {
+    const handleTapEnd = useCallback((...args: unknown[]) => {
       if (hasTap) {
         setIsTapped(false);
       }
-    }, [hasTap]);
+      if (typeof userOnTap === "function") {
+        (userOnTap as (...callbackArgs: unknown[]) => void)(...args);
+      }
+    }, [hasTap, userOnTap]);
 
-    const handleFocus = useCallback(() => {
+    const handleFocus = useCallback((...args: unknown[]) => {
       if (hasFocus) {
         setIsFocused(true);
       }
-    }, [hasFocus]);
+      if (typeof userOnFocus === "function") {
+        (userOnFocus as (...callbackArgs: unknown[]) => void)(...args);
+      }
+    }, [hasFocus, userOnFocus]);
 
-    const handleBlur = useCallback(() => {
+    const handleBlur = useCallback((...args: unknown[]) => {
       if (hasFocus) {
         setIsFocused(false);
       }
-    }, [hasFocus]);
+      if (typeof userOnBlur === "function") {
+        (userOnBlur as (...callbackArgs: unknown[]) => void)(...args);
+      }
+    }, [hasFocus, userOnBlur]);
+    const handleWrapperAnimationComplete = useCallback(
+      (definition: unknown) => {
+        const exitDefinition =
+          typeof definition === "string" ||
+          (typeof definition === "object" && definition !== null)
+            ? (definition as string | VariantTarget)
+            : undefined;
+        if (hasWrapperExitVariant) {
+          handleExitComplete(exitDefinition);
+        }
+        if (typeof userOnAnimationComplete === "function") {
+          (userOnAnimationComplete as (value: unknown) => void)(definition);
+        }
+      },
+      [hasWrapperExitVariant, handleExitComplete, userOnAnimationComplete]
+    );
 
     useEffect(() => {
       if (!hasVariants) return;
@@ -2243,6 +2325,7 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
       Wrapper,
       {
         ref: mergedRef,
+        ...passthroughWrapperProps,
         className,
         style: {
           visibility: isReady || !waitForFonts ? "visible" : "hidden",
@@ -2262,6 +2345,7 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
         onTap: handleTapEnd,
         onFocus: handleFocus,
         onBlur: handleBlur,
+        onAnimationComplete: handleWrapperAnimationComplete,
       },
       child
     );
