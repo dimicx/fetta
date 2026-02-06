@@ -111,6 +111,8 @@ const result = splitText(element, options);
 import { SplitText } from 'fetta/react';
 ```
 
+`fetta/react` forwards common wrapper DOM props (`id`, `role`, `tabIndex`, `aria-*`, `data-*`, and event handlers like `onClick`) to the wrapper element.
+
 For Motion variants:
 
 ```tsx

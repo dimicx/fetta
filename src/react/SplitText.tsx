@@ -80,7 +80,31 @@ type CallbackReturn =
 // Props
 // ---------------------------------------------------------------------------
 
-interface SplitTextProps {
+type ControlledWrapperHTMLKeys =
+  | "children"
+  | "className"
+  | "style"
+  | "ref"
+  | "as"
+  | "onSplit"
+  | "onResize"
+  | "options"
+  | "autoSplit"
+  | "revertOnComplete"
+  | "viewport"
+  | "onViewportEnter"
+  | "onViewportLeave"
+  | "initialStyles"
+  | "initialClasses"
+  | "resetOnViewportLeave"
+  | "waitForFonts";
+
+type WrapperHTMLProps = Omit<
+  React.HTMLAttributes<HTMLElement>,
+  ControlledWrapperHTMLKeys
+>;
+
+interface SplitTextProps extends WrapperHTMLProps {
   children: ReactElement;
   /** The wrapper element type. Default: "div" */
   as?: keyof HTMLElementTagNameMap;
@@ -163,6 +187,7 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
       initialClasses,
       resetOnViewportLeave = false,
       waitForFonts = true,
+      ...wrapperProps
     },
     forwardedRef
   ) {
@@ -436,6 +461,7 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
       Wrapper,
       {
         ref: mergedRef,
+        ...wrapperProps,
         className,
         style: {
           visibility: waitForFonts ? "hidden" : "visible",

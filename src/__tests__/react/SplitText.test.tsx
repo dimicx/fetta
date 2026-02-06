@@ -295,4 +295,47 @@ describe("SplitText React Component", () => {
       expect(callbackRef).toHaveBeenCalledWith(expect.any(HTMLDivElement));
     });
   });
+
+  it("forwards common wrapper HTML attributes", async () => {
+    const { container } = render(
+      <SplitText
+        id="headline"
+        role="heading"
+        tabIndex={2}
+        data-testid="split-wrapper"
+        aria-label="Split heading"
+      >
+        <p>Hello</p>
+      </SplitText>
+    );
+
+    await waitFor(() => {
+      expect(container.querySelectorAll(".split-char").length).toBeGreaterThan(0);
+    });
+
+    const wrapper = container.firstElementChild as HTMLElement | null;
+    expect(wrapper?.id).toBe("headline");
+    expect(wrapper?.getAttribute("role")).toBe("heading");
+    expect(wrapper?.tabIndex).toBe(2);
+    expect(wrapper?.getAttribute("data-testid")).toBe("split-wrapper");
+    expect(wrapper?.getAttribute("aria-label")).toBe("Split heading");
+  });
+
+  it("forwards wrapper event handlers", async () => {
+    const onClick = vi.fn();
+    const { container } = render(
+      <SplitText onClick={onClick}>
+        <p>Hello</p>
+      </SplitText>
+    );
+
+    await waitFor(() => {
+      expect(container.querySelectorAll(".split-char").length).toBeGreaterThan(0);
+    });
+
+    const wrapper = container.firstElementChild as HTMLElement | null;
+    wrapper?.click();
+
+    expect(onClick).toHaveBeenCalledTimes(1);
+  });
 });
