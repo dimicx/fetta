@@ -153,6 +153,7 @@ import { AnimatePresence } from "motion/react";
 | `onResize` | `(result) => void` | — | Called on autoSplit re-split |
 | `options` | `SplitOptions` | — | Split options (type, classes, mask, propIndex, disableKerning) |
 | `autoSplit` | `boolean` | `false` | Re-split on container resize |
+| `waitForFonts` | `boolean` | `true` | Wait for `document.fonts.ready` before splitting (recommended for stable kerning). Set `false` for immediate split. |
 | `revertOnComplete` | `boolean` | `false` | Revert after animation completes |
 | `inView` | `boolean \| InViewOptions` | `false` | Enable viewport detection |
 | `onInView` | `(result) => void` | — | Called when element enters viewport |
@@ -329,7 +330,17 @@ document.fonts.ready.then(() => {
 });
 ```
 
-The React component handles this automatically — no additional setup required.
+React and Motion components wait for fonts by default (`waitForFonts={true}`), which gives the most stable kerning.
+
+If you notice a visual shift after splitting, keep the default waiting behavior enabled.
+
+If you need immediate splitting (for example, responsiveness-first UI), you can opt out with `waitForFonts={false}`:
+
+```tsx
+<SplitText waitForFonts={false}>
+  <h1>Split Immediately</h1>
+</SplitText>
+```
 
 ## Accessibility
 

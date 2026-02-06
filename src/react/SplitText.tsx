@@ -4,6 +4,7 @@ import {
   reapplyInitialClasses,
 } from "../internal/initialStyles";
 import type { InitialStyles, InitialClasses } from "../internal/initialStyles";
+import { waitForFontsReady } from "../internal/waitForFontsReady";
 import {
   createElement,
   forwardRef,
@@ -113,6 +114,8 @@ interface SplitTextProps {
   /** Re-apply initialStyles/initialClasses when element leaves viewport.
    * Useful for scroll-triggered animations that should reset when scrolling away. */
   resetOnViewportLeave?: boolean;
+  /** Wait for `document.fonts.ready` before splitting. Disable for immediate split. */
+  waitForFonts?: boolean;
 }
 
 /**
@@ -159,6 +162,7 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
       initialStyles,
       initialClasses,
       resetOnViewportLeave = false,
+      waitForFonts = true,
     },
     forwardedRef
   ) {
@@ -233,7 +237,7 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
 
       let isMounted = true;
 
-      document.fonts.ready.then(() => {
+      waitForFontsReady(waitForFonts).then(() => {
         if (!isMounted || hasSplitRef.current) return;
         if (!containerRef.current) return;
 
@@ -371,7 +375,7 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
         // Reset for StrictMode remount
         hasSplitRef.current = false;
       };
-    }, [childElement, autoSplit, needsViewport]);
+    }, [childElement, autoSplit, needsViewport, waitForFonts]);
 
     // Handle isInView changes
     useEffect(() => {
@@ -433,7 +437,11 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
       {
         ref: mergedRef,
         className,
-        style: { visibility: "hidden", position: "relative", ...userStyle },
+        style: {
+          visibility: waitForFonts ? "hidden" : "visible",
+          position: "relative",
+          ...userStyle,
+        },
       },
       children
     );

@@ -1,7 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, waitFor, cleanup, act } from "@testing-library/react";
 import { SplitText } from "../../react/SplitText";
-import { resetResizeObserver, getLastResizeObserver } from "../setup";
+import {
+  resetResizeObserver,
+  getLastResizeObserver,
+  removeDocumentFonts,
+  setDocumentFontsReady,
+} from "../setup";
 import React, { StrictMode } from "react";
 
 describe("SplitText React Component", () => {
@@ -95,6 +100,84 @@ describe("SplitText React Component", () => {
     await waitFor(() => {
       const observer = getLastResizeObserver();
       expect(observer).not.toBeNull();
+    });
+  });
+
+  it("waits for fonts by default before splitting", async () => {
+    let resolveFonts: () => void = () => {};
+    const fontsReady = new Promise<void>((resolve) => {
+      resolveFonts = resolve;
+    });
+    setDocumentFontsReady(fontsReady);
+
+    const { container } = render(
+      <SplitText>
+        <p>Hello</p>
+      </SplitText>
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(container.querySelectorAll(".split-char").length).toBe(0);
+
+    await act(async () => {
+      resolveFonts();
+      await fontsReady;
+    });
+
+    await waitFor(() => {
+      expect(container.querySelectorAll(".split-char").length).toBeGreaterThan(0);
+    });
+  });
+
+  it("skips waiting for fonts when waitForFonts is false", async () => {
+    const fontsReady = new Promise<void>(() => {
+      // Keep pending so we can assert split happens without waiting.
+    });
+    setDocumentFontsReady(fontsReady);
+
+    const { container } = render(
+      <SplitText waitForFonts={false}>
+        <p>Hello</p>
+      </SplitText>
+    );
+    const wrapper = container.firstChild as HTMLElement | null;
+    expect(wrapper?.style.visibility).toBe("visible");
+
+    await waitFor(() => {
+      expect(container.querySelectorAll(".split-char").length).toBeGreaterThan(0);
+    });
+  });
+
+  it("splits when document.fonts is unavailable", async () => {
+    removeDocumentFonts();
+
+    const { container } = render(
+      <SplitText>
+        <p>Hello</p>
+      </SplitText>
+    );
+
+    await waitFor(() => {
+      expect(container.querySelectorAll(".split-char").length).toBeGreaterThan(0);
+    });
+  });
+
+  it("continues splitting when document.fonts.ready rejects", async () => {
+    const fontsReady = new Promise<void>((_resolve, reject) => {
+      queueMicrotask(() => reject(new Error("font loading failed")));
+    });
+    setDocumentFontsReady(fontsReady);
+
+    const { container } = render(
+      <SplitText>
+        <p>Hello</p>
+      </SplitText>
+    );
+
+    await waitFor(() => {
+      expect(container.querySelectorAll(".split-char").length).toBeGreaterThan(0);
     });
   });
 

@@ -4,6 +4,7 @@ import React from "react";
 import {
   getLastIntersectionObserver,
   resetIntersectionObserver,
+  setDocumentFontsReady,
 } from "../setup";
 
 const motionElements: Array<{ tag: string; props: Record<string, unknown> }> = [];
@@ -185,5 +186,61 @@ describe("SplitText viewport (motion)", () => {
     });
 
     expect(scrollMock).toHaveBeenCalled();
+  });
+
+  it("waits for fonts by default before splitting", async () => {
+    let resolveFonts: () => void = () => {};
+    const fontsReady = new Promise<void>((resolve) => {
+      resolveFonts = resolve;
+    });
+    setDocumentFontsReady(fontsReady);
+
+    const { container } = render(
+      <SplitText
+        variants={{ show: { opacity: 1 } }}
+        animate="show"
+        options={{ type: "words" }}
+      >
+        <p>Hello World</p>
+      </SplitText>
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(container.querySelectorAll(".split-word").length).toBe(0);
+
+    await act(async () => {
+      resolveFonts();
+      await fontsReady;
+    });
+
+    await waitFor(() => {
+      expect(container.querySelectorAll(".split-word").length).toBeGreaterThan(0);
+    });
+  });
+
+  it("skips waiting for fonts when waitForFonts is false", async () => {
+    const fontsReady = new Promise<void>(() => {
+      // Keep pending so we can assert split happens without waiting.
+    });
+    setDocumentFontsReady(fontsReady);
+
+    const { container } = render(
+      <SplitText
+        variants={{ show: { opacity: 1 } }}
+        animate="show"
+        waitForFonts={false}
+        options={{ type: "words" }}
+      >
+        <p>Hello World</p>
+      </SplitText>
+    );
+    const wrapper = container.firstChild as HTMLElement | null;
+    expect(wrapper?.style.visibility).toBe("visible");
+
+    await waitFor(() => {
+      expect(container.querySelectorAll(".split-word").length).toBeGreaterThan(0);
+    });
   });
 });

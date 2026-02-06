@@ -5,6 +5,7 @@ import {
   reapplyInitialClasses,
 } from "../internal/initialStyles";
 import type { InitialStyles, InitialClasses } from "../internal/initialStyles";
+import { waitForFontsReady } from "../internal/waitForFontsReady";
 import { animate, scroll } from "motion";
 import { MotionConfig, motion, usePresence, useReducedMotion } from "motion/react";
 import type { AnimationOptions, DOMKeyframesDefinition } from "motion";
@@ -920,6 +921,8 @@ interface SplitTextProps<TCustom = unknown> {
   /** Re-apply initialStyles/initialClasses (callback mode) or initial variant (variant mode) when element leaves viewport.
    * Useful for scroll-triggered animations that should reset when scrolling away. */
   resetOnViewportLeave?: boolean;
+  /** Wait for `document.fonts.ready` before splitting. Disable for immediate split. */
+  waitForFonts?: boolean;
 
   // --- Variant props ---
 
@@ -1168,6 +1171,7 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
       initialStyles,
       initialClasses,
       resetOnViewportLeave = false,
+      waitForFonts = true,
       variants,
       initial: initialVariant,
       animate: animateVariantName,
@@ -1475,7 +1479,7 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
 
       let isMounted = true;
 
-      document.fonts.ready.then(() => {
+      waitForFontsReady(waitForFonts).then(() => {
         if (!isMounted || hasSplitRef.current) return;
         if (!containerRef.current) return;
 
@@ -1486,7 +1490,7 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
       return () => {
         isMounted = false;
       };
-    }, [childElement, measureAndSetData]);
+    }, [childElement, measureAndSetData, waitForFonts]);
 
     // Build VariantInfo arrays for function variants
     const variantInfo = useMemo(
@@ -2241,7 +2245,7 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
         ref: mergedRef,
         className,
         style: {
-          visibility: isReady ? "visible" : "hidden",
+          visibility: isReady || !waitForFonts ? "visible" : "hidden",
           position: "relative",
           ...userStyle,
         },

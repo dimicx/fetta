@@ -106,13 +106,29 @@ export function resetIntersectionObserver() {
   lastIntersectionObserver = null;
 }
 
-// Mock document.fonts.ready
-Object.defineProperty(document, "fonts", {
-  value: {
-    ready: Promise.resolve(),
-  },
-  writable: true,
-});
+type MockDocumentFonts = { ready?: Promise<unknown> } | undefined;
+
+function setDocumentFonts(value: MockDocumentFonts) {
+  Object.defineProperty(document, "fonts", {
+    value,
+    writable: true,
+    configurable: true,
+  });
+}
+
+export function setDocumentFontsReady(ready: Promise<unknown>) {
+  setDocumentFonts({ ready });
+}
+
+export function resetDocumentFontsReady() {
+  setDocumentFontsReady(Promise.resolve());
+}
+
+export function removeDocumentFonts() {
+  setDocumentFonts(undefined);
+}
+
+resetDocumentFontsReady();
 
 // Mock Range API for getBoundingClientRect
 const originalCreateRange = document.createRange.bind(document);
@@ -194,4 +210,5 @@ vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(
 beforeEach(() => {
   resetResizeObserver();
   resetIntersectionObserver();
+  resetDocumentFontsReady();
 });
