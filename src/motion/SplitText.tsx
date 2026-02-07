@@ -11,6 +11,7 @@ import { MotionConfig, motion, usePresence, useReducedMotion } from "motion/reac
 import type { AnimationOptions, DOMKeyframesDefinition } from "motion";
 import type { HTMLMotionProps } from "motion/react";
 import {
+  cloneElement,
   createElement,
   forwardRef,
   isValidElement,
@@ -1229,6 +1230,7 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
     const containerRef = useRef<HTMLElement>(null);
     const [childElement, setChildElement] = useState<HTMLElement | null>(null);
     const [data, setData] = useState<SplitTextData | null>(null);
+    const [childTreeVersion, setChildTreeVersion] = useState(0);
     const [isReady, setIsReady] = useState(false);
     const [isInView, setIsInView] = useState(false);
     const [isPresent, safeToRemove] = usePresence();
@@ -1488,6 +1490,11 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
     const measureAndSetData = useCallback(
       (isResize = false) => {
         if (!childElement) return;
+
+        // splitTextData mutates element contents for measurement and restores via
+        // innerHTML, which replaces DOM nodes. Bump a key so React remounts the
+        // child subtree instead of reconciling against stale node references.
+        setChildTreeVersion((current) => current + 1);
 
         const originalHTML =
           originalHTMLRef.current ?? childElement.innerHTML;
@@ -2322,11 +2329,16 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
           }
           return createElement(
             children.type,
-            childProps,
+            {
+              ...childProps,
+              key: `split-${childTreeVersion}`,
+            },
             renderNodes(data.nodes, "split")
           );
         })()
-      : children;
+      : cloneElement(children, {
+          key: `raw-${childTreeVersion}`,
+        });
 
     const Wrapper = getMotionComponent(Component);
 

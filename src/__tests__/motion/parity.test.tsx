@@ -468,4 +468,61 @@ describe("SplitText motion parity", () => {
     expect(userTransition?.delay).toBe(0);
     expect(motionReact.__getMotionConfigMock()).toHaveBeenCalled();
   });
+
+  it("handles nested inline elements without removeChild errors", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    try {
+      const { container, rerender, unmount } = render(
+        <SplitText options={{ type: "chars" }}>
+          <p className="text-[16px] font-[450] text-center my-0!">
+            Click{" "}
+            <a href="#" className="text-accent no-underline">
+              <em>this link</em>
+            </a>{" "}
+            or see <em>emphasized</em> and{" "}
+            <strong className="font-bold">bold</strong> text
+          </p>
+        </SplitText>
+      );
+
+      await waitFor(() => {
+        expect(container.querySelectorAll(".split-char").length).toBeGreaterThan(
+          0
+        );
+      });
+
+      rerender(
+        <SplitText options={{ type: "chars" }}>
+          <p className="text-[16px] font-[450] text-center my-0!">
+            Click{" "}
+            <a href="#" className="text-accent no-underline">
+              <em>this link</em>
+            </a>{" "}
+            or see <em>updated text</em> and{" "}
+            <strong className="font-bold">bold</strong> text
+          </p>
+        </SplitText>
+      );
+
+      await waitFor(() => {
+        expect(container.querySelectorAll(".split-char").length).toBeGreaterThan(
+          0
+        );
+      });
+
+      const hasRemoveChildError = errorSpy.mock.calls.some((args) =>
+        args.some((value) =>
+          String(value).includes(
+            "Failed to execute 'removeChild' on 'Node'"
+          )
+        )
+      );
+
+      expect(hasRemoveChildError).toBe(false);
+      unmount();
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
 });
