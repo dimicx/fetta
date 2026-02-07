@@ -105,6 +105,46 @@ const result = splitText(element, options);
 }
 ```
 
+### `createSplitClones(splitResult, options)` (`fetta/helpers`)
+
+Builds swap/reveal DOM layers (clones + optional wrappers) without coupling to any animation library.
+
+```ts
+import { splitText } from "fetta";
+import { createSplitClones } from "fetta/helpers";
+
+const split = splitText(element, { type: "chars", mask: "chars" });
+const layers = createSplitClones(split, { unit: "chars", wrap: true });
+
+// Animate with Motion, GSAP, WAAPI, or CSS
+// ...
+
+layers.cleanup(); // removes clones/wrappers, keeps split DOM
+// layers.cleanup({ revertSplit: true }) // also calls split.revert()
+```
+
+#### Behavior
+
+- Clone is always appended to the **current parent** of the original split node.
+- `wrap: false` (default): clone is appended to existing parent (often the mask wrapper).
+- `wrap: true`: original is first moved into a track wrapper, then clone is appended there.
+- Helper never calls `splitText` and never performs animation.
+
+#### Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `unit` | `"chars" \| "words" \| "lines"` | — | Which split nodes to layer |
+| `wrap` | `boolean` | `false` | Wrap each original in a track wrapper (`position: relative`) |
+| `display` | `"auto" \| "inline-block" \| "block"` | `"auto"` | Track display when `wrap: true` (`lines` => `block`, others => `inline-block`) |
+| `cloneOffset.axis` | `"x" \| "y"` | `"y"` | Axis used for initial clone offset |
+| `cloneOffset.direction` | `"start" \| "end"` | `"start"` | Offset direction (`start` => negative) |
+| `cloneOffset.distance` | `string` | `"100%"` | Offset distance |
+| `trackClassName` / `cloneClassName` | `string \| (ctx) => string` | — | Class names (static or per-item) |
+| `trackStyle` / `cloneStyle` | `object \| (ctx) => object` | — | Inline styles (static or per-item) |
+
+For reveal/swap effects, use matching `mask` in `splitText` (`"chars"`, `"words"`, or `"lines"`).
+
 ### `<SplitText>` (React)
 
 ```tsx

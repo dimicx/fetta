@@ -13,6 +13,10 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
+    "./helpers": {
+      "types": "./dist/helpers.d.ts",
+      "import": "./dist/helpers.js"
+    },
     "./react": {
       "types": "./dist/react.d.ts",
       "import": "./dist/react.js"
@@ -59,6 +63,11 @@
       "path": "dist/motion.js",
       "import": "*",
       "ignore": ["react", "motion", "motion/react"]
+    },
+    {
+      "name": "Helpers",
+      "path": "dist/helpers.js",
+      "import": "*"
     }
   ],
   "peerDependencies": {
