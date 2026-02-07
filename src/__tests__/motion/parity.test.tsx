@@ -360,7 +360,7 @@ describe("SplitText motion parity", () => {
         .__getMotionElements()
         .find(
           (entry) =>
-            entry.props["data-index"] === "2" &&
+            entry.props["data-char-index"] === "2" &&
             typeof entry.props.className === "string" &&
             entry.props.className.includes("split-char")
         );
@@ -398,7 +398,7 @@ describe("SplitText motion parity", () => {
         .__getMotionElements()
         .find(
           (entry) =>
-            entry.props["data-index"] === "2" &&
+            entry.props["data-char-index"] === "2" &&
             typeof entry.props.className === "string" &&
             entry.props.className.includes("split-char")
         );

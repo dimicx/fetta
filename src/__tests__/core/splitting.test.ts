@@ -549,26 +549,26 @@ describe("splitText", () => {
   });
 
   describe("data attributes", () => {
-    it("adds data-index to each character", () => {
+    it("adds data-char-index to each character", () => {
       const element = document.createElement("p");
       element.textContent = "Hi";
       container.appendChild(element);
 
       const result = splitText(element, { type: "chars" });
 
-      expect(result.chars[0].dataset.index).toBe("0");
-      expect(result.chars[1].dataset.index).toBe("1");
+      expect(result.chars[0].dataset.charIndex).toBe("0");
+      expect(result.chars[1].dataset.charIndex).toBe("1");
     });
 
-    it("adds data-index to each word", () => {
+    it("adds data-word-index to each word", () => {
       const element = document.createElement("p");
       element.textContent = "Hello World";
       container.appendChild(element);
 
       const result = splitText(element, { type: "words" });
 
-      expect(result.words[0].dataset.index).toBe("0");
-      expect(result.words[1].dataset.index).toBe("1");
+      expect(result.words[0].dataset.wordIndex).toBe("0");
+      expect(result.words[1].dataset.wordIndex).toBe("1");
     });
   });
 

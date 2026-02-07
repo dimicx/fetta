@@ -918,11 +918,11 @@ function createSpan(
     span.className = className;
   }
 
-  if (index !== undefined) {
-    span.dataset.index = index.toString();
+  if (index !== undefined && options?.propName) {
+    span.setAttribute(`data-${options.propName}-index`, index.toString());
 
     // Add CSS custom property if propIndex enabled
-    if (options?.propIndex && options?.propName) {
+    if (options.propIndex) {
       span.style.setProperty(`--${options.propName}-index`, index.toString());
     }
   }

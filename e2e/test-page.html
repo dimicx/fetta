@@ -266,7 +266,9 @@
         span.className = className;
       }
       if (index !== undefined) {
-        span.dataset.index = index.toString();
+        if (options?.propName) {
+          span.setAttribute(`data-${options.propName}-index`, index.toString());
+        }
         if (options?.propIndex && options?.propName) {
           span.style.setProperty(`--${options.propName}-index`, index.toString());
         }

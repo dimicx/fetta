@@ -189,7 +189,10 @@ vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(
   function (this: Element) {
     // Return predictable bounding rect based on element's text content length
     const text = this.textContent || "";
-    const dataIndex = this.getAttribute("data-index");
+    const dataIndex =
+      this.getAttribute("data-char-index") ||
+      this.getAttribute("data-word-index") ||
+      this.getAttribute("data-line-index");
     const index = dataIndex ? parseInt(dataIndex, 10) : 0;
 
     return {

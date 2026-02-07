@@ -140,7 +140,7 @@ describe("SplitText viewport (motion)", () => {
     const customByIndex = new Map<number, unknown>();
 
     for (const entry of charEntries) {
-      const dataIndex = entry.props["data-index"];
+      const dataIndex = entry.props["data-char-index"];
       const index = typeof dataIndex === "string" ? Number(dataIndex) : null;
       if (index == null || Number.isNaN(index)) continue;
       customByIndex.set(index, entry.props.custom);

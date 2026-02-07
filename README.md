@@ -326,7 +326,10 @@ Default classes applied to split elements:
 | `.split-word` | Words | Inline positioning |
 | `.split-line` | Lines | Block display |
 
-Each element also receives a `data-index` attribute with its position.
+Split elements receive typed index attributes:
+- Characters: `data-char-index`
+- Words: `data-word-index`
+- Lines: `data-line-index`
 
 ## Font Loading
 
