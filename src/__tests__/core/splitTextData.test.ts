@@ -25,6 +25,17 @@ function hasElement(
   return found;
 }
 
+function countElements(
+  nodes: SplitTextDataNode[],
+  predicate: (node: SplitTextDataNode) => boolean
+): number {
+  let count = 0;
+  walkNodes(nodes, (node) => {
+    if (predicate(node)) count += 1;
+  });
+  return count;
+}
+
 describe("splitTextData", () => {
   let container: HTMLDivElement;
 
@@ -89,6 +100,36 @@ describe("splitTextData", () => {
     });
 
     expect(hasMaskWrapper).toBe(true);
+  });
+
+  it("keeps explicit <br> boundaries in serialized split output", () => {
+    const element = document.createElement("h1");
+    element.innerHTML = "First<br>Second";
+    container.appendChild(element);
+
+    const data = splitTextData(element, { type: "words" });
+
+    const hasBreak = hasElement(
+      data.nodes,
+      (node) => node.type === "element" && node.tag === "br"
+    );
+
+    expect(hasBreak).toBe(true);
+  });
+
+  it("creates separate serialized line nodes for block boundaries", () => {
+    const element = document.createElement("h1");
+    element.innerHTML =
+      '<span style="display:block">Line one</span><span style="display:block">Line two</span>';
+    container.appendChild(element);
+
+    const data = splitTextData(element, { type: "chars,lines", mask: "chars" });
+    const lineCount = countElements(
+      data.nodes,
+      (node) => node.type === "element" && node.split === "line"
+    );
+
+    expect(lineCount).toBe(2);
   });
 
   it("restores original HTML/ARIA/style after serialization", () => {

@@ -316,6 +316,8 @@ interface MeasuredWord {
   chars: MeasuredChar[];
   /** If true, no space should be added before this word (e.g., continuation after dash) */
   noSpaceBefore: boolean;
+  /** If true, force a hard boundary before this word (rendered as line break) */
+  hardBreakBefore: boolean;
 }
 
 // Characters that act as break points (word can wrap after these)
@@ -831,6 +833,51 @@ function buildAncestorChain(
   return ancestors;
 }
 
+function isBoundaryDisplayValue(display: string): boolean {
+  return !(display.startsWith("inline") || display === "contents");
+}
+
+function isBlockBoundaryElement(
+  element: Element,
+  cache: WeakMap<Element, boolean>
+): boolean {
+  const cached = cache.get(element);
+  if (cached !== undefined) return cached;
+
+  const tagName = element.tagName.toLowerCase();
+  let isBoundary = false;
+
+  if (tagName === "br") {
+    isBoundary = true;
+  } else if (element instanceof HTMLElement) {
+    const display = getComputedStyle(element).display;
+    isBoundary = isBoundaryDisplayValue(display);
+  }
+
+  cache.set(element, isBoundary);
+  return isBoundary;
+}
+
+function getNearestBlockBoundaryAncestor(
+  textNode: Text,
+  rootElement: HTMLElement,
+  cache: WeakMap<Element, boolean>
+): Element | null {
+  let current: Element | null = textNode.parentElement;
+
+  while (current && current !== rootElement) {
+    if (isBlockBoundaryElement(current, cache)) {
+      // BR is handled as an explicit boundary node, not ancestor scope.
+      if (current.tagName.toLowerCase() !== "br") {
+        return current;
+      }
+    }
+    current = current.parentElement;
+  }
+
+  return null;
+}
+
 /**
  * Collect text structure from element.
  * Splits at whitespace AND after em-dashes/en-dashes for natural wrapping.
@@ -847,36 +894,71 @@ function collectTextStructure(
   // Only create ancestor cache if we need to track ancestors
   const ancestorCache = trackAncestors ? new WeakMap<Element, AncestorInfo>() : null;
 
-  const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
-  let node: Text | null;
+  const walker = document.createTreeWalker(
+    element,
+    NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT
+  );
+  let node: Node | null;
 
   let currentWord: MeasuredChar[] = [];
   let noSpaceBeforeNext = false;
+  let hardBreakBeforeNextWord = false;
+  let lastBoundaryOwner: Element | null | undefined;
+  const boundaryCache = new WeakMap<Element, boolean>();
 
   const pushWord = () => {
     if (currentWord.length > 0) {
       words.push({
         chars: currentWord,
         noSpaceBefore: noSpaceBeforeNext,
+        hardBreakBefore: hardBreakBeforeNextWord,
       });
       currentWord = [];
       noSpaceBeforeNext = false;
+      hardBreakBeforeNextWord = false;
+    }
+  };
+
+  const markHardBreakBeforeNextWord = () => {
+    pushWord();
+    if (words.length > 0) {
+      hardBreakBeforeNextWord = true;
     }
   };
 
   // Reusable empty array for chars without ancestors (avoids allocations)
   const emptyAncestors: AncestorInfo[] = [];
 
-  while ((node = walker.nextNode() as Text | null)) {
-    const text = node.textContent || "";
+  while ((node = walker.nextNode())) {
+    if (node.nodeType === Node.ELEMENT_NODE) {
+      const elementNode = node as Element;
+      if (elementNode.tagName.toLowerCase() === "br") {
+        markHardBreakBeforeNextWord();
+      }
+      continue;
+    }
+    if (node.nodeType !== Node.TEXT_NODE) continue;
+
+    const textNode = node as Text;
+    const text = textNode.textContent || "";
+    const boundaryOwner = getNearestBlockBoundaryAncestor(
+      textNode,
+      element,
+      boundaryCache
+    );
+
+    if (lastBoundaryOwner !== undefined && boundaryOwner !== lastBoundaryOwner) {
+      markHardBreakBeforeNextWord();
+    }
 
     // Build ancestor chain only if tracking is enabled
     const ancestors = trackAncestors
-      ? buildAncestorChain(node, element, ancestorCache!)
+      ? buildAncestorChain(textNode, element, ancestorCache!)
       : emptyAncestors;
 
     // Segment into grapheme clusters for proper emoji/complex character handling
     const graphemes = segmentGraphemes(text);
+    let hasVisibleChars = false;
 
     for (const grapheme of graphemes) {
       // Whitespace = word boundary (with space before next word)
@@ -887,6 +969,7 @@ function collectTextStructure(
         continue;
       }
 
+      hasVisibleChars = true;
       currentWord.push({ char: grapheme, ancestors });
 
       // Break AFTER dash characters (dash stays with preceding text)
@@ -895,12 +978,44 @@ function collectTextStructure(
         noSpaceBeforeNext = true; // Next word continues without space
       }
     }
+
+    if (hasVisibleChars) {
+      lastBoundaryOwner = boundaryOwner;
+    }
   }
 
   // Don't forget the last word
   pushWord();
 
   return words;
+}
+
+function splitByHardBreak<T>(
+  items: T[],
+  isHardBreakBefore: (item: T, index: number) => boolean
+): T[][] {
+  if (items.length === 0) return [];
+
+  const segments: T[][] = [];
+  let currentSegment: T[] = [];
+
+  items.forEach((item, index) => {
+    if (index > 0 && isHardBreakBefore(item, index)) {
+      if (currentSegment.length > 0) {
+        segments.push(currentSegment);
+      }
+      currentSegment = [item];
+      return;
+    }
+
+    currentSegment.push(item);
+  });
+
+  if (currentSegment.length > 0) {
+    segments.push(currentSegment);
+  }
+
+  return segments;
 }
 
 /**
@@ -1082,6 +1197,7 @@ function performSplit(
     // ========== PATH 1: KEEP WORD WRAPPERS ==========
 
     const noSpaceBeforeSet = new Set<HTMLSpanElement>();
+    const hardBreakBeforeSet = new Set<HTMLSpanElement>();
 
     // Track word-level ancestors (when all chars in a word share the same ancestors)
     const wordLevelAncestors = new Map<HTMLSpanElement, AncestorInfo[]>();
@@ -1099,6 +1215,9 @@ function performSplit(
 
       if (measuredWord.noSpaceBefore) {
         noSpaceBeforeSet.add(wordSpan);
+      }
+      if (measuredWord.hardBreakBefore) {
+        hardBreakBeforeSet.add(wordSpan);
       }
 
       if (splitChars) {
@@ -1214,6 +1333,14 @@ function performSplit(
       allWords.push(wordSpan);
     });
 
+    const appendBoundaryBeforeWord = (nextWordSpan: HTMLSpanElement) => {
+      if (hardBreakBeforeSet.has(nextWordSpan)) {
+        element.appendChild(document.createElement("br"));
+      } else if (!noSpaceBeforeSet.has(nextWordSpan)) {
+        element.appendChild(document.createTextNode(" "));
+      }
+    };
+
     // Add words to DOM, grouping adjacent words with same word-level ancestors
     let i = 0;
     while (i < allWords.length) {
@@ -1227,6 +1354,9 @@ function performSplit(
         while (j < allWords.length) {
           const nextWordSpan = allWords[j];
           const nextAncestors = wordLevelAncestors.get(nextWordSpan);
+          if (hardBreakBeforeSet.has(nextWordSpan)) {
+            break;
+          }
           // Check if next word has same ancestors AND no space-breaking dash between them
           if (nextAncestors && ancestorChainsEqual(ancestors, nextAncestors)) {
             wordGroup.push(nextWordSpan);
@@ -1247,7 +1377,11 @@ function performSplit(
             fragment.appendChild(ws);
           }
           // Add space between words in the group (if not last and no noSpaceBefore)
-          if (idx < wordGroup.length - 1 && !noSpaceBeforeSet.has(wordGroup[idx + 1])) {
+          if (
+            idx < wordGroup.length - 1 &&
+            !noSpaceBeforeSet.has(wordGroup[idx + 1]) &&
+            !hardBreakBeforeSet.has(wordGroup[idx + 1])
+          ) {
             fragment.appendChild(document.createTextNode(" "));
           }
         });
@@ -1255,9 +1389,9 @@ function performSplit(
         const wrapped = wrapInAncestors(fragment, ancestors);
         element.appendChild(wrapped);
 
-        // Add space after the group if needed
-        if (j < allWords.length && !noSpaceBeforeSet.has(allWords[j])) {
-          element.appendChild(document.createTextNode(" "));
+        // Add boundary after the group if needed
+        if (j < allWords.length) {
+          appendBoundaryBeforeWord(allWords[j]);
         }
 
         i = j;
@@ -1270,9 +1404,9 @@ function performSplit(
         } else {
           element.appendChild(wordSpan);
         }
-        // Add space after if needed
-        if (i < allWords.length - 1 && !noSpaceBeforeSet.has(allWords[i + 1])) {
-          element.appendChild(document.createTextNode(" "));
+        // Add boundary after if needed
+        if (i < allWords.length - 1) {
+          appendBoundaryBeforeWord(allWords[i + 1]);
         }
         i++;
       }
@@ -1345,7 +1479,12 @@ function performSplit(
       // 2. Measure kerning across word boundaries (lastChar + space + firstChar)
       for (let wordIdx = 1; wordIdx < allWords.length; wordIdx++) {
         // Skip words that don't have a space before them (dash continuations)
-        if (noSpaceBeforeSet.has(allWords[wordIdx])) continue;
+        if (
+          noSpaceBeforeSet.has(allWords[wordIdx]) ||
+          hardBreakBeforeSet.has(allWords[wordIdx])
+        ) {
+          continue;
+        }
 
         const prevWord = allWords[wordIdx - 1];
         const currWord = allWords[wordIdx];
@@ -1385,7 +1524,12 @@ function performSplit(
       // Cross-word kerning for word-only splitting (no char spans)
       // Apply margin to the word span itself
       for (let wordIdx = 1; wordIdx < allWords.length; wordIdx++) {
-        if (noSpaceBeforeSet.has(allWords[wordIdx])) continue;
+        if (
+          noSpaceBeforeSet.has(allWords[wordIdx]) ||
+          hardBreakBeforeSet.has(allWords[wordIdx])
+        ) {
+          continue;
+        }
 
         const prevWord = allWords[wordIdx - 1];
         const currWord = allWords[wordIdx];
@@ -1420,7 +1564,13 @@ function performSplit(
 
     // Handle line grouping
     if (splitLines) {
-      const lineGroups = groupIntoLines(allWords, element);
+      const wordSegments = splitByHardBreak(
+        allWords,
+        (wordSpan, index) => index > 0 && hardBreakBeforeSet.has(wordSpan)
+      );
+      const lineGroups = wordSegments.flatMap((segment) =>
+        groupIntoLines(segment, element)
+      );
       element.textContent = "";
 
       const allLines: HTMLSpanElement[] = [];
@@ -1577,7 +1727,8 @@ function performSplit(
           // Add space after wrapper
           if (
             idx < measuredWords.length - 1 &&
-            !measuredWords[idx + 1].noSpaceBefore
+            !measuredWords[idx + 1].noSpaceBefore &&
+            !measuredWords[idx + 1].hardBreakBefore
           ) {
             const spaceNode = document.createTextNode(" ");
             element.appendChild(spaceNode);
@@ -1585,7 +1736,17 @@ function performSplit(
         });
 
         // Group into lines
-        const lineGroups = groupIntoLines(wordWrappers.map(w => w.wrapper), element);
+        const wordWrapperSegments = splitByHardBreak(
+          wordWrappers,
+          (wordWrapper, index) =>
+            index > 0 && measuredWords[wordWrapper.wordIndex].hardBreakBefore
+        );
+        const lineGroups = wordWrapperSegments.flatMap((segment) =>
+          groupIntoLines(
+            segment.map((wordWrapper) => wordWrapper.wrapper),
+            element
+          )
+        );
         element.textContent = "";
 
         const allLines: HTMLSpanElement[] = [];

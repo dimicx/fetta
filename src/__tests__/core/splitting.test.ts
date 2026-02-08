@@ -189,6 +189,80 @@ describe("splitText", () => {
     });
   });
 
+  describe("hard break boundaries", () => {
+    it("preserves explicit <br> boundaries when splitting chars", () => {
+      const element = document.createElement("h1");
+      element.innerHTML = "AB<br>CD";
+      container.appendChild(element);
+
+      const result = splitText(element, { type: "chars" });
+
+      expect(result.chars.map((char) => char.textContent)).toEqual([
+        "A",
+        "B",
+        "C",
+        "D",
+      ]);
+      expect(element.querySelectorAll("br")).toHaveLength(1);
+    });
+
+    it("preserves explicit <br> boundaries when splitting words", () => {
+      const element = document.createElement("h1");
+      element.innerHTML = "First<br>Second";
+      container.appendChild(element);
+
+      const result = splitText(element, { type: "words" });
+
+      expect(result.words).toHaveLength(2);
+      expect(result.words.map((word) => word.textContent)).toEqual([
+        "First",
+        "Second",
+      ]);
+      expect(element.querySelectorAll("br")).toHaveLength(1);
+    });
+
+    it("normalizes block descendant boundaries to <br> for word splitting", () => {
+      const element = document.createElement("h1");
+      element.innerHTML =
+        '<span style="display:block">Alpha</span><span style="display:block">Beta</span>';
+      container.appendChild(element);
+
+      const result = splitText(element, { type: "words" });
+
+      expect(result.words).toHaveLength(2);
+      expect(result.words.map((word) => word.textContent)).toEqual([
+        "Alpha",
+        "Beta",
+      ]);
+      expect(element.querySelectorAll("br")).toHaveLength(1);
+    });
+
+    it("creates separate line groups for explicit block boundaries", () => {
+      const element = document.createElement("h1");
+      element.innerHTML =
+        '<span style="display:block">Line one</span><span style="display:block">Line two</span>';
+      container.appendChild(element);
+
+      const result = splitText(element, { type: "chars,lines", mask: "chars" });
+
+      expect(result.lines).toHaveLength(2);
+      expect(result.lines.map((line) => line.textContent)).toEqual([
+        "Line one",
+        "Line two",
+      ]);
+    });
+
+    it("does not inject spaces across hard break boundaries", () => {
+      const element = document.createElement("h1");
+      element.innerHTML = "One<br>Two";
+      container.appendChild(element);
+
+      splitText(element, { type: "words" });
+
+      expect(element.textContent).toBe("OneTwo");
+    });
+  });
+
   describe("revert functionality", () => {
     it("restores original HTML when revert is called", () => {
       const element = document.createElement("p");

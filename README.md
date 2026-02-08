@@ -427,6 +427,7 @@ Pre-existing `aria-label` attributes are always preserved.
 ## Notes
 
 - **Ligatures are disabled** (`font-variant-ligatures: none`) because ligatures cannot span multiple elements.
+- **Authored hard breaks are preserved** — Explicit `<br>` and block-level descendants are treated as hard boundaries. In `chars`/`words` modes, hard boundaries are normalized to `<br>` in the split output.
 
 ## Browser Support
 
