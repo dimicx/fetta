@@ -2070,6 +2070,19 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
       if (!data || !childElement) return;
 
       const splitElements = collectSplitElements(childElement, optionsRef.current);
+      const expectedCounts = collectRelations(data.nodes).counts;
+      const missingExpectedElements =
+        (expectedCounts.chars > 0 && splitElements.chars.length === 0) ||
+        (expectedCounts.words > 0 && splitElements.words.length === 0) ||
+        (expectedCounts.lines > 0 && splitElements.lines.length === 0);
+
+      // During re-split/remount there can be one transient pass where `data`
+      // is ready but `childElement` still points at the pre-split subtree.
+      // Skip this stale pass so onSplit only receives real split nodes.
+      if (missingExpectedElements) {
+        return;
+      }
+
       const revert = () => {
         if (hasRevertedRef.current) return;
         hasRevertedRef.current = true;
