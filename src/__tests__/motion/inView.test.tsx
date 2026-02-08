@@ -188,6 +188,92 @@ describe("SplitText viewport (motion)", () => {
     expect(scrollMock).toHaveBeenCalled();
   });
 
+  it("compiles whileScroll delays into timeline at offsets", async () => {
+    const { animate } = await import("motion");
+    const animateMock = animate as unknown as ReturnType<typeof vi.fn>;
+    animateMock.mockClear();
+
+    render(
+      <SplitText
+        variants={{
+          progress: { opacity: 1 },
+        }}
+        whileScroll="progress"
+        options={{ type: "chars" }}
+        transition={{
+          duration: 0.3,
+          delay: (index: number) => index * 0.05,
+        }}
+      >
+        <p>ABCD</p>
+      </SplitText>
+    );
+
+    await waitFor(() => {
+      expect(animateMock).toHaveBeenCalled();
+    });
+
+    const latestCall = animateMock.mock.calls[animateMock.mock.calls.length - 1];
+    const sequence = latestCall?.[0] as
+      | Array<[unknown, unknown, Record<string, unknown>]>
+      | undefined;
+
+    expect(Array.isArray(sequence)).toBe(true);
+    expect((sequence || []).length).toBeGreaterThan(1);
+
+    const ats = (sequence || []).map(([, , options]) => options?.at);
+    expect(ats.every((value) => typeof value === "number")).toBe(true);
+    expect(ats[0]).toBe(0);
+    expect(Math.max(...(ats as number[]))).toBeGreaterThan(0);
+    expect(
+      (sequence || []).every(([, , options]) => !("delay" in options))
+    ).toBe(true);
+  });
+
+  it("preserves explicit at offsets in whileScroll function variants", async () => {
+    const { animate } = await import("motion");
+    const animateMock = animate as unknown as ReturnType<typeof vi.fn>;
+    animateMock.mockClear();
+
+    render(
+      <SplitText
+        variants={{
+          dim: { chars: { opacity: 0.2 } },
+          lit: {
+            chars: ({ globalIndex }) => ({
+              opacity: [0.2, 1],
+              transition: {
+                duration: 0.3,
+                at: globalIndex * 0.025,
+              },
+            }),
+          },
+        }}
+        initial="dim"
+        whileScroll="lit"
+        options={{ type: "chars" }}
+      >
+        <p>ABCD</p>
+      </SplitText>
+    );
+
+    await waitFor(() => {
+      expect(animateMock).toHaveBeenCalled();
+    });
+
+    const latestCall = animateMock.mock.calls[animateMock.mock.calls.length - 1];
+    const sequence = latestCall?.[0] as
+      | Array<[unknown, unknown, Record<string, unknown>]>
+      | undefined;
+
+    expect(Array.isArray(sequence)).toBe(true);
+    expect((sequence || []).length).toBeGreaterThan(1);
+
+    const ats = (sequence || []).map(([, , options]) => options?.at);
+    expect(ats[0]).toBe(0);
+    expect(Math.max(...(ats as number[]))).toBeGreaterThan(0);
+  });
+
   it("does not call animate for whileScroll flat variants when no split targets exist", async () => {
     const { animate, scroll } = await import("motion");
     const animateMock = animate as unknown as ReturnType<typeof vi.fn>;

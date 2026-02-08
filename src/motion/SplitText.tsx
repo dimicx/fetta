@@ -8,7 +8,12 @@ import type { InitialStyles, InitialClasses } from "../internal/initialStyles";
 import { waitForFontsReady } from "../internal/waitForFontsReady";
 import { animate, scroll } from "motion";
 import { MotionConfig, motion, usePresence, useReducedMotion } from "motion/react";
-import type { AnimationOptions, DOMKeyframesDefinition } from "motion";
+import type {
+  AnimationOptions,
+  AnimationSequence,
+  DOMKeyframesDefinition,
+  SequenceTime,
+} from "motion";
 import type { HTMLMotionProps } from "motion/react";
 import {
   cloneElement,
@@ -734,6 +739,79 @@ type FnAnimationItem = {
   transition?: AnimationOptions;
 };
 
+function buildStaticItems<TCustom = unknown>(
+  elements: HTMLSpanElement[],
+  elementType: SplitTypeKey,
+  props: DOMKeyframesDefinition,
+  transition: AnimationOptions | undefined,
+  maps: IndexMaps,
+  isPresent: boolean,
+  delayScope: DelayScope,
+  custom?: TCustom
+): FnAnimationItem[] {
+  const items: FnAnimationItem[] = [];
+  const total = elements.length;
+
+  for (let i = 0; i < total; i++) {
+    const info = buildVariantInfo(
+      elementType,
+      i,
+      total,
+      maps,
+      isPresent,
+      custom
+    );
+
+    let merged = transition ? { ...transition } : undefined;
+    if (merged && "delay" in merged) {
+      const rawDelay = merged.delay;
+      const resolvedDelay =
+        typeof rawDelay === "function"
+          ? rawDelay(
+              delayScope === "local" ? info.index : info.globalIndex,
+              delayScope === "local" ? info.count : info.globalCount
+            )
+          : rawDelay;
+      if (resolvedDelay != null && Number.isFinite(resolvedDelay)) {
+        merged.delay = resolvedDelay;
+      } else {
+        const { delay: _removed, ...restNoDelay } = merged;
+        merged = restNoDelay;
+      }
+    }
+
+    items.push({
+      element: elements[i],
+      props,
+      transition:
+        merged && Object.keys(merged).length ? merged : undefined,
+    });
+  }
+
+  return items;
+}
+
+function buildSequenceFromItems(items: FnAnimationItem[]): AnimationSequence {
+  return items.map((item) => {
+    const sequenceTransition: AnimationOptions & { at?: SequenceTime } =
+      item.transition ? { ...item.transition } : {};
+    const delay = sequenceTransition.delay;
+    const hasExplicitAt = sequenceTransition.at != null;
+    const at = hasExplicitAt
+      ? sequenceTransition.at
+      : typeof delay === "number" && Number.isFinite(delay)
+        ? delay
+        : 0;
+
+    if ("delay" in sequenceTransition) {
+      delete sequenceTransition.delay;
+    }
+
+    sequenceTransition.at = at;
+    return [item.element, item.props, sequenceTransition];
+  });
+}
+
 function buildFnItems<TCustom = unknown>(
   elements: HTMLSpanElement[],
   elementType: SplitTypeKey,
@@ -888,6 +966,98 @@ function animateVariant<TCustom = unknown>(
   if (!elements.length) return [];
   const t = forceInstant ? instantTransition : localT || globalTransition;
   return [animate(elements, props, t)];
+}
+
+function animateVariantForScroll<TCustom = unknown>(
+  result: SplitTextElements,
+  variant: VariantDefinition<TCustom>,
+  globalTransition: AnimationOptions | undefined,
+  type?: string,
+  isPresent = true,
+  delayScope: DelayScope = "global",
+  custom?: TCustom,
+  forceInstant = false
+): MotionAnimation | null {
+  const instantTransition = { duration: 0, delay: 0 };
+  const maps = buildIndexMapsDom(result);
+  const items: FnAnimationItem[] = [];
+
+  if (typeof variant === "function") {
+    const targetType = getTargetTypeForElements(result, type);
+    const elements = result[targetType];
+    if (!elements.length) return null;
+    items.push(
+      ...buildFnItems(
+        elements,
+        targetType,
+        variant,
+        maps,
+        globalTransition,
+        isPresent,
+        delayScope,
+        custom,
+        forceInstant
+      )
+    );
+  } else if (isPerTypeVariant(variant)) {
+    for (const key of ELEMENT_TYPE_KEYS) {
+      const target = variant[key];
+      if (!target || !result[key].length) continue;
+
+      if (typeof target === "function") {
+        const localTransition = variant.transition || globalTransition;
+        items.push(
+          ...buildFnItems(
+            result[key],
+            key,
+            target,
+            maps,
+            localTransition,
+            isPresent,
+            delayScope,
+            custom,
+            forceInstant
+          )
+        );
+      } else {
+        const { props, transition: localT } = extractTransition(target);
+        const t = forceInstant ? instantTransition : localT || globalTransition;
+        items.push(
+          ...buildStaticItems(
+            result[key],
+            key,
+            props,
+            t,
+            maps,
+            isPresent,
+            delayScope,
+            custom
+          )
+        );
+      }
+    }
+  } else {
+    const { props, transition: localT } = extractTransition(variant);
+    const targetType = getTargetTypeForElements(result, type);
+    const elements = result[targetType];
+    if (!elements.length) return null;
+    const t = forceInstant ? instantTransition : localT || globalTransition;
+    items.push(
+      ...buildStaticItems(
+        elements,
+        targetType,
+        props,
+        t,
+        maps,
+        isPresent,
+        delayScope,
+        custom
+      )
+    );
+  }
+
+  if (!items.length) return null;
+  return animate(buildSequenceFromItems(items));
 }
 
 // ---------------------------------------------------------------------------
@@ -2153,7 +2323,7 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
         return;
       }
 
-      const animations = animateVariant(
+      const scrollAnimation = animateVariantForScroll(
         splitResultRef.current,
         def,
         transition,
@@ -2163,18 +2333,18 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
         custom
       );
 
+      if (!scrollAnimation) return;
+
       const scrollOpts = scrollProp;
-      const cleanups = animations.map((anim) =>
-        scroll(anim, {
-          target: containerRef.current ?? undefined,
-          offset: scrollOpts?.offset,
-          axis: scrollOpts?.axis,
-          container: scrollOpts?.container?.current ?? undefined,
-        })
-      );
+      const cleanup = scroll(scrollAnimation, {
+        target: containerRef.current ?? undefined,
+        offset: scrollOpts?.offset,
+        axis: scrollOpts?.axis,
+        container: scrollOpts?.container?.current ?? undefined,
+      });
 
       return () => {
-        for (const cleanup of cleanups) cleanup();
+        cleanup();
       };
     }, [
       data,
