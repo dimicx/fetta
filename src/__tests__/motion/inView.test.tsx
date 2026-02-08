@@ -188,6 +188,33 @@ describe("SplitText viewport (motion)", () => {
     expect(scrollMock).toHaveBeenCalled();
   });
 
+  it("does not call animate for whileScroll flat variants when no split targets exist", async () => {
+    const { animate, scroll } = await import("motion");
+    const animateMock = animate as unknown as ReturnType<typeof vi.fn>;
+    const scrollMock = scroll as unknown as ReturnType<typeof vi.fn>;
+    animateMock.mockClear();
+    scrollMock.mockClear();
+
+    render(
+      <SplitText
+        variants={{
+          progress: { opacity: 1 },
+        }}
+        whileScroll="progress"
+        options={{ type: "chars" }}
+      >
+        <p />
+      </SplitText>
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(animateMock).not.toHaveBeenCalled();
+    expect(scrollMock).not.toHaveBeenCalled();
+  });
+
   it("waits for fonts by default before splitting", async () => {
     let resolveFonts: () => void = () => {};
     const fontsReady = new Promise<void>((resolve) => {

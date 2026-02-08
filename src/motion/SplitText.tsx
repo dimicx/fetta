@@ -155,6 +155,7 @@ type SplitTypeKey = "chars" | "words" | "lines";
 type DelayScope = "global" | "local";
 
 const ELEMENT_TYPE_KEYS: SplitTypeKey[] = ["chars", "words", "lines"];
+const VOID_HTML_TAGS = new Set(["br", "hr", "img", "input", "meta", "link"]);
 
 /** Detect per-type vs flat variant */
 type PerTypeVariants<TCustom = unknown> = Partial<
@@ -629,12 +630,13 @@ function getTargetElements(
   result: SplitTextElements,
   type?: string
 ): HTMLSpanElement[] {
-  if (type?.includes("chars") && result.chars.length) return result.chars;
-  if (type?.includes("words") && result.words.length) return result.words;
-  if (type?.includes("lines") && result.lines.length) return result.lines;
+  if (type?.includes("chars")) return result.chars;
+  if (type?.includes("words")) return result.words;
+  if (type?.includes("lines")) return result.lines;
   if (result.chars.length) return result.chars;
   if (result.words.length) return result.words;
-  return result.lines;
+  if (result.lines.length) return result.lines;
+  return [];
 }
 
 /** Get most granular element type name for flat variants */
@@ -642,9 +644,9 @@ function getTargetTypeForElements(
   result: SplitTextElements,
   type?: string
 ): SplitTypeKey {
-  if (type?.includes("chars") && result.chars.length) return "chars";
-  if (type?.includes("words") && result.words.length) return "words";
-  if (type?.includes("lines") && result.lines.length) return "lines";
+  if (type?.includes("chars")) return "chars";
+  if (type?.includes("words")) return "words";
+  if (type?.includes("lines")) return "lines";
   if (result.chars.length) return "chars";
   if (result.words.length) return "words";
   return "lines";
@@ -883,6 +885,7 @@ function animateVariant<TCustom = unknown>(
 
   const { props, transition: localT } = extractTransition(variant);
   const elements = getTargetElements(result, type);
+  if (!elements.length) return [];
   const t = forceInstant ? instantTransition : localT || globalTransition;
   return [animate(elements, props, t)];
 }
@@ -2175,6 +2178,7 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
       };
     }, [
       data,
+      childElement,
       isPresent,
       whileScroll,
       resolvedVariants,
@@ -2240,6 +2244,8 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
       }
 
       const props = attrsToProps(node.attrs);
+      const renderedChildren = renderNodes(node.children, key);
+      const isVoidTag = VOID_HTML_TAGS.has(node.tag);
 
       if (node.split) {
         const splitType = node.split === "char"
@@ -2298,15 +2304,15 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
             exit: exitProp,
             onAnimationComplete: onCompleteHandler,
           },
-          renderNodes(node.children, key)
+          renderedChildren
         );
       }
 
-      return createElement(
-        node.tag,
-        { key, ...props },
-        renderNodes(node.children, key)
-      );
+      if (isVoidTag) {
+        return createElement(node.tag, { key, ...props });
+      }
+
+      return createElement(node.tag, { key, ...props }, renderedChildren);
     }
 
     function renderNodes(nodes: SplitTextDataNode[], keyPrefix: string) {
