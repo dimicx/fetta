@@ -81,8 +81,14 @@ export interface SplitTextOptions {
   };
 }
 
-/** Style value for initialStyles - a partial CSSStyleDeclaration object */
-type InitialStyleValue = Partial<CSSStyleDeclaration>;
+type CSSVariableStyles = {
+  [K in `--${string}`]?: string | number;
+};
+
+/** Style value for initialStyles - CSS-like properties with numeric value support */
+type InitialStyleValue = {
+  [property: string]: string | number | undefined;
+} & CSSVariableStyles;
 
 /** Function that returns styles based on element and index */
 type InitialStyleFn = (element: HTMLElement, index: number) => InitialStyleValue;

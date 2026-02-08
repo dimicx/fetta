@@ -188,6 +188,31 @@ describe("SplitText viewport (motion)", () => {
     expect(scrollMock).toHaveBeenCalled();
   });
 
+  it("supports inline whileScroll object variants without variants map", async () => {
+    const { animate, scroll } = await import("motion");
+    const animateMock = animate as unknown as ReturnType<typeof vi.fn>;
+    const scrollMock = scroll as unknown as ReturnType<typeof vi.fn>;
+    animateMock.mockClear();
+    scrollMock.mockClear();
+
+    render(
+      <SplitText
+        whileScroll={{
+          chars: { opacity: 1 },
+        }}
+        options={{ type: "chars" }}
+      >
+        <p>Hello</p>
+      </SplitText>
+    );
+
+    await waitFor(() => {
+      expect(animateMock).toHaveBeenCalled();
+    });
+
+    expect(scrollMock).toHaveBeenCalled();
+  });
+
   it("compiles whileScroll delays into timeline at offsets", async () => {
     const { animate } = await import("motion");
     const animateMock = animate as unknown as ReturnType<typeof vi.fn>;
@@ -230,27 +255,25 @@ describe("SplitText viewport (motion)", () => {
     ).toBe(true);
   });
 
-  it("preserves explicit at offsets in whileScroll function variants", async () => {
+  it("preserves explicit at offsets in inline whileScroll function variants", async () => {
     const { animate } = await import("motion");
     const animateMock = animate as unknown as ReturnType<typeof vi.fn>;
     animateMock.mockClear();
 
     render(
       <SplitText
-        variants={{
-          dim: { chars: { opacity: 0.2 } },
-          lit: {
-            chars: ({ globalIndex }) => ({
-              opacity: [0.2, 1],
-              transition: {
-                duration: 0.3,
-                at: globalIndex * 0.025,
-              },
-            }),
-          },
+        initialStyles={{
+          chars: { opacity: 0.2 },
         }}
-        initial="dim"
-        whileScroll="lit"
+        whileScroll={{
+          chars: ({ globalIndex }) => ({
+            opacity: [0.2, 1],
+            transition: {
+              duration: 0.3,
+              at: globalIndex * 0.025,
+            },
+          }),
+        }}
         options={{ type: "chars" }}
       >
         <p>ABCD</p>

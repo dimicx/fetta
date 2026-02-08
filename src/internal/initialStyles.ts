@@ -1,5 +1,12 @@
-/** Style value for initialStyles - a partial style object */
-export type InitialStyleValue = Partial<CSSStyleDeclaration>;
+type CSSVariableStyles = {
+  [K in `--${string}`]?: string | number;
+};
+
+/** Style value for initialStyles - CSS properties with numeric + CSS variable support */
+export type InitialStyleValue = Partial<
+  Record<keyof CSSStyleDeclaration, string | number>
+> &
+  CSSVariableStyles;
 
 /** Function that returns styles based on element and index */
 export type InitialStyleFn = (element: HTMLElement, index: number) => InitialStyleValue;

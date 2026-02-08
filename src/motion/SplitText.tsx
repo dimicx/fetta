@@ -1147,7 +1147,7 @@ interface SplitTextProps<TCustom = unknown> extends WrapperMotionProps {
   exit?: string | VariantDefinition<TCustom> | false;
   /** Variant to scroll-animate to. Animation progress is driven by scroll position.
    *  Takes priority over `animate` and `whileInView`. */
-  whileScroll?: string;
+  whileScroll?: string | VariantDefinition<TCustom>;
   /** Scroll options for whileScroll. Configures target tracking and scroll range. */
   scroll?: ScrollPropOptions;
   /** Variant to animate to on hover */
@@ -1453,8 +1453,16 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
       animateVariantName != null && typeof animateVariantName !== "string";
     const inlineExitVariant =
       exit != null && exit !== false && typeof exit !== "string";
+    const inlineWhileScrollVariant =
+      whileScroll != null && typeof whileScroll !== "string";
     const resolvedVariants = useMemo(() => {
-      if (!variants && !inlineInitialVariant && !inlineAnimateVariant && !inlineExitVariant) {
+      if (
+        !variants &&
+        !inlineInitialVariant &&
+        !inlineAnimateVariant &&
+        !inlineExitVariant &&
+        !inlineWhileScrollVariant
+      ) {
         return variants;
       }
       const merged: Record<string, VariantDefinition<TCustom>> = {
@@ -1470,15 +1478,21 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
       if (inlineExitVariant) {
         merged.__fetta_exit__ = exit as VariantDefinition<TCustom>;
       }
+      if (inlineWhileScrollVariant) {
+        merged.__fetta_whileScroll__ =
+          whileScroll as VariantDefinition<TCustom>;
+      }
       return merged;
     }, [
       variants,
       inlineInitialVariant,
       inlineAnimateVariant,
       inlineExitVariant,
+      inlineWhileScrollVariant,
       initialVariant,
       animateVariantName,
       exit,
+      whileScroll,
     ]);
 
     const initialLabel: string | false | undefined = inlineInitialVariant
@@ -1490,6 +1504,9 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
     const exitLabel: string | false | undefined = inlineExitVariant
       ? "__fetta_exit__"
       : exit;
+    const whileScrollLabel: string | undefined = inlineWhileScrollVariant
+      ? "__fetta_whileScroll__"
+      : (whileScroll as string | undefined);
     const hasVariants = !!(
       resolvedVariants && Object.keys(resolvedVariants).length
     );
@@ -2028,7 +2045,7 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
 
       if (!isPresent) return;
 
-      if (whileScroll) return;
+      if (whileScrollLabel) return;
 
       const vDefs = resolvedVariants;
       if (isInView) {
@@ -2062,7 +2079,7 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
       hasVariants,
       resolvedVariants,
       animateLabel,
-      whileScroll,
+      whileScrollLabel,
       isPresent,
     ]);
 
@@ -2182,7 +2199,7 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
       !!animateLabel &&
       !whileInView &&
       !needsViewport &&
-      !whileScroll &&
+      !whileScrollLabel &&
       revertOnComplete;
 
     const pendingRevertRef = useRef<string | null>(null);
@@ -2314,11 +2331,11 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
     }, [isInView, needsViewport, hasVariants]);
 
     useEffect(() => {
-      if (!whileScroll) return;
+      if (!whileScrollLabel) return;
       if (!resolvedVariants) return;
       if (!splitResultRef.current) return;
 
-      const variantName = whileScroll;
+      const variantName = whileScrollLabel;
       const def = resolvedVariants[variantName];
       if (!def) return;
 
@@ -2363,7 +2380,7 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
       data,
       childElement,
       isPresent,
-      whileScroll,
+      whileScrollLabel,
       resolvedVariants,
       transition,
       scrollProp,
@@ -2391,7 +2408,7 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
     const displayVariant = interactionVariant ?? activeVariant;
     const shouldInheritVariants =
       hasOrchestrationVariants ||
-      !!whileScroll ||
+      !!whileScrollLabel ||
       hasHover ||
       hasTap ||
       hasFocus ||
