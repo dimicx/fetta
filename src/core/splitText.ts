@@ -45,8 +45,8 @@ export interface SplitTextOptions {
   mask?: "lines" | "words" | "chars";
   /** Auto-split on resize (observes parent element) */
   autoSplit?: boolean;
-  /** Callback when resize triggers re-split (does not re-trigger initial animations) */
-  onResize?: (result: Omit<SplitTextResult, "revert" | "dispose">) => void;
+  /** Callback when resize triggers a re-split that changes line structure (does not re-trigger initial animations) */
+  onResplit?: (result: Omit<SplitTextResult, "revert" | "dispose">) => void;
   /** Callback fired after text is split, receives split elements. Return animation for revertOnComplete. */
   onSplit?: (result: {
     chars: HTMLSpanElement[];
@@ -1857,7 +1857,7 @@ function performSplit(
  * // Responsive re-splitting
  * splitText(element, {
  *   autoSplit: true,
- *   onResize: ({ lines }) => {
+ *   onResplit: ({ lines }) => {
  *     // Re-animate after resize
  *     animate(lines, { opacity: [0, 1] });
  *   },
@@ -1873,7 +1873,7 @@ export function splitText(
     lineClass = "split-line",
     mask,
     autoSplit = false,
-    onResize,
+    onResplit,
     onSplit,
     revertOnComplete = false,
     propIndex = false,
@@ -2066,8 +2066,8 @@ export function splitText(
 
           // Only trigger callback if lines actually changed
           const newFingerprint = getLineFingerprint(currentLines);
-          if (onResize && newFingerprint !== previousFingerprint) {
-            onResize({
+          if (onResplit && newFingerprint !== previousFingerprint) {
+            onResplit({
               chars: currentChars,
               words: currentWords,
               lines: currentLines,

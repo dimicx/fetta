@@ -51,8 +51,8 @@ describe("splitText autoSplit", () => {
     element.textContent = "Hello World";
     parentElement.appendChild(element);
 
-    const onResize = vi.fn();
-    splitText(element, { autoSplit: true, onResize });
+    const onResplit = vi.fn();
+    splitText(element, { autoSplit: true, onResplit });
 
     const observer = getLastResizeObserver();
     expect(observer).not.toBeNull();
@@ -62,8 +62,8 @@ describe("splitText autoSplit", () => {
     observer!.trigger([{ contentRect: { width: 150 } }]);
     observer!.trigger([{ contentRect: { width: 200 } }]);
 
-    // onResize should not have been called yet (debounce pending)
-    expect(onResize).not.toHaveBeenCalled();
+    // onResplit should not have been called yet (debounce pending)
+    expect(onResplit).not.toHaveBeenCalled();
 
     // Advance timers by 200ms
     vi.advanceTimersByTime(200);
@@ -77,8 +77,8 @@ describe("splitText autoSplit", () => {
     element.textContent = "Hello World";
     parentElement.appendChild(element);
 
-    const onResize = vi.fn();
-    splitText(element, { autoSplit: true, onResize });
+    const onResplit = vi.fn();
+    splitText(element, { autoSplit: true, onResplit });
 
     const observer = getLastResizeObserver();
 
@@ -88,8 +88,8 @@ describe("splitText autoSplit", () => {
     vi.advanceTimersByTime(200);
     vi.runAllTimers();
 
-    // Should not have called onResize because first event is skipped
-    expect(onResize).not.toHaveBeenCalled();
+    // Should not have called onResplit because first event is skipped
+    expect(onResplit).not.toHaveBeenCalled();
   });
 
   it("disconnects observer on dispose", () => {
@@ -125,7 +125,7 @@ describe("splitText autoSplit", () => {
     consoleSpy.mockRestore();
   });
 
-  it("does not trigger onResize when width stays the same", () => {
+  it("does not trigger onResplit when width stays the same", () => {
     const element = document.createElement("p");
     element.textContent = "Hello World";
     parentElement.appendChild(element);
@@ -136,8 +136,8 @@ describe("splitText autoSplit", () => {
       writable: true,
     });
 
-    const onResize = vi.fn();
-    splitText(element, { autoSplit: true, onResize });
+    const onResplit = vi.fn();
+    splitText(element, { autoSplit: true, onResplit });
 
     const observer = getLastResizeObserver();
 
@@ -150,8 +150,8 @@ describe("splitText autoSplit", () => {
     vi.advanceTimersByTime(200);
     vi.runAllTimers();
 
-    // onResize should not be called since width didn't change
-    expect(onResize).not.toHaveBeenCalled();
+    // onResplit should not be called since width didn't change
+    expect(onResplit).not.toHaveBeenCalled();
   });
 
   it("auto-disposes when element is removed from DOM", () => {
@@ -159,8 +159,8 @@ describe("splitText autoSplit", () => {
     element.textContent = "Hello World";
     parentElement.appendChild(element);
 
-    const onResize = vi.fn();
-    splitText(element, { autoSplit: true, onResize });
+    const onResplit = vi.fn();
+    splitText(element, { autoSplit: true, onResplit });
 
     const observer = getLastResizeObserver();
 
@@ -180,7 +180,7 @@ describe("splitText autoSplit", () => {
     vi.advanceTimersByTime(200);
     vi.runAllTimers();
 
-    // onResize should not be called since element is disconnected
-    expect(onResize).not.toHaveBeenCalled();
+    // onResplit should not be called since element is disconnected
+    expect(onResplit).not.toHaveBeenCalled();
   });
 });

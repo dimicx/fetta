@@ -683,7 +683,7 @@
         lineClass = "split-line",
         mask,
         autoSplit = false,
-        onResize,
+        onResplit,
         onSplit,
         revertOnComplete = false,
         propIndex = false,
@@ -813,8 +813,8 @@
               currentLines = result.lines;
 
               const newFingerprint = getLineFingerprint(result.lines);
-              if (onResize && newFingerprint !== previousFingerprint) {
-                onResize({
+              if (onResplit && newFingerprint !== previousFingerprint) {
+                onResplit({
                   chars: result.chars,
                   words: result.words,
                   lines: result.lines,

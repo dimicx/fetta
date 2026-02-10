@@ -86,7 +86,7 @@ const result = splitText(element, options);
 | `lineClass` | `string` | `"split-line"` | CSS class for line elements |
 | `mask` | `string` | — | Wrap elements in `overflow: clip` container: `"chars"`, `"words"`, or `"lines"` |
 | `autoSplit` | `boolean` | `false` | Re-split on container resize |
-| `onResize` | `function` | — | Callback after resize re-split |
+| `onResplit` | `function` | — | Callback after resize re-split when line structure changes |
 | `onSplit` | `function` | — | Callback after initial split |
 | `revertOnComplete` | `boolean` | `false` | Auto-revert when animation completes |
 | `propIndex` | `boolean` | `false` | Add CSS custom properties: `--char-index`, `--word-index`, `--line-index` |
@@ -194,7 +194,7 @@ import { AnimatePresence } from "motion/react";
 | `style` | `CSSProperties` | — | Additional styles for wrapper element |
 | `ref` | `Ref<HTMLElement>` | — | Ref to container element |
 | `onSplit` | `(result) => void` | — | Called after text is split |
-| `onResize` | `(result) => void` | — | Called on autoSplit re-split |
+| `onResplit` | `(result) => void` | — | Called when autoSplit re-splits and line structure changes |
 | `options` | `SplitOptions` | — | Split options (type, classes, mask, propIndex, disableKerning) |
 | `autoSplit` | `boolean` | `false` | Re-split on container resize |
 | `waitForFonts` | `boolean` | `true` | Wait for `document.fonts.ready` before splitting (recommended for stable kerning). Set `false` for immediate split. |
@@ -209,7 +209,7 @@ import { AnimatePresence } from "motion/react";
 
 #### Callback Signature
 
-All callbacks (`onSplit`, `onResize`, `onViewportEnter`, `onViewportLeave`) receive the same result object:
+All callbacks (`onSplit`, `onResplit`, `onViewportEnter`, `onViewportLeave`) receive the same result object:
 
 ```ts
 {

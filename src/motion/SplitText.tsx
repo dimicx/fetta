@@ -79,7 +79,7 @@ interface ViewportOptions {
 }
 
 /**
- * Result passed to SplitText callbacks (onSplit, onViewportEnter, onViewportLeave, onResize).
+ * Result passed to SplitText callbacks (onSplit, onViewportEnter, onViewportLeave, onResplit).
  *
  * Contains arrays of split elements and a revert function for manual control.
  * Empty arrays are returned for split types not requested in options.
@@ -1104,8 +1104,8 @@ interface SplitTextProps<TCustom = unknown> extends WrapperMotionProps {
    * Still fires in variant mode for side effects.
    */
   onSplit?: (result: SplitTextElements) => CallbackReturn;
-  /** Called when autoSplit triggers a re-split on resize */
-  onResize?: (result: SplitTextElements) => void;
+  /** Called when autoSplit triggers a re-split on resize and line structure changes */
+  onResplit?: (result: SplitTextElements) => void;
   options?: SplitTextOptions;
   autoSplit?: boolean;
   /** When true, reverts to original HTML after animation promise resolves */
@@ -1367,7 +1367,7 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
       className,
       style: userStyle,
       onSplit,
-      onResize,
+      onResplit,
       options,
       autoSplit = false,
       revertOnComplete = false,
@@ -1572,7 +1572,7 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
 
     // Stable refs for callbacks and options
     const onSplitRef = useRef(onSplit);
-    const onResizeRef = useRef(onResize);
+    const onResplitRef = useRef(onResplit);
     const optionsRef = useRef(options);
     const revertOnCompleteRef = useRef(revertOnComplete);
     const viewportRef = useRef(viewport);
@@ -1591,7 +1591,7 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
 
     useLayoutEffect(() => {
       onSplitRef.current = onSplit;
-      onResizeRef.current = onResize;
+      onResplitRef.current = onResplit;
       optionsRef.current = options;
       revertOnCompleteRef.current = revertOnComplete;
       viewportRef.current = viewport;
@@ -2177,9 +2177,9 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
       const fingerprint = splitElements.lines
         .map((line) => line.textContent || "")
         .join("\n");
-      if (pendingResizeRef.current && onResizeRef.current) {
+      if (pendingResizeRef.current && onResplitRef.current) {
         if (lineFingerprintRef.current !== fingerprint) {
-          onResizeRef.current({
+          onResplitRef.current({
             chars: splitElements.chars,
             words: splitElements.words,
             lines: splitElements.lines,
