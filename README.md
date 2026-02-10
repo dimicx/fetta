@@ -159,7 +159,7 @@ For Motion variants:
 import { SplitText } from 'fetta/motion';
 ```
 
-`fetta/motion` forwards standard Motion/DOM wrapper props (`id`, `role`, `tabIndex`, `layout`, `drag`, `data-*`, etc.). Split lifecycle props (`variants`, `initial`, `animate`, `exit`, `while*`, `viewport`, `transition`, callbacks) still control animation behavior.
+`fetta/motion` forwards standard Motion/DOM wrapper props (`id`, `role`, `tabIndex`, `layout`, `drag`, `data-*`, etc.). Split lifecycle props (`variants`, `initial`, `animate`, `exit`, `while*`, `viewport`, `transition`, callbacks) still control animation behavior, and split-trigger `while*` props support both named and inline variant definitions.
 
 Animate on exit with Motion's `AnimatePresence` (make `SplitText` the direct child):
 

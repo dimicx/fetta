@@ -1139,9 +1139,9 @@ interface SplitTextProps<TCustom = unknown> extends WrapperMotionProps {
   /** Variant to animate to immediately after split */
   animate?: string | VariantDefinition<TCustom>;
   /** Variant to animate to when entering viewport */
-  whileInView?: string;
+  whileInView?: string | VariantDefinition<TCustom>;
   /** Variant to animate to when leaving viewport */
-  whileOutOfView?: string;
+  whileOutOfView?: string | VariantDefinition<TCustom>;
   /** Variant to animate to on exit when used inside AnimatePresence.
    *  Accepts a variant name or a full variant definition. */
   exit?: string | VariantDefinition<TCustom> | false;
@@ -1151,11 +1151,11 @@ interface SplitTextProps<TCustom = unknown> extends WrapperMotionProps {
   /** Scroll options for whileScroll. Configures target tracking and scroll range. */
   scroll?: ScrollPropOptions;
   /** Variant to animate to on hover */
-  whileHover?: string;
+  whileHover?: string | VariantDefinition<TCustom>;
   /** Variant to animate to on tap */
-  whileTap?: string;
+  whileTap?: string | VariantDefinition<TCustom>;
   /** Variant to animate to on focus */
-  whileFocus?: string;
+  whileFocus?: string | VariantDefinition<TCustom>;
   /** Reduced motion handling (matches MotionConfig reducedMotion) */
   reducedMotion?: "user" | "always" | "never";
   /** Custom data forwarded to function variants and AnimatePresence */
@@ -1430,10 +1430,49 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
       [forwardedRef]
     );
 
+    const inlineInitialVariant =
+      initialVariant != null &&
+      initialVariant !== false &&
+      typeof initialVariant !== "string";
+    const inlineAnimateVariant =
+      animateVariantName != null && typeof animateVariantName !== "string";
+    const inlineExitVariant =
+      exit != null && exit !== false && typeof exit !== "string";
+    const inlineWhileInViewVariant =
+      whileInView != null && typeof whileInView !== "string";
+    const inlineWhileOutOfViewVariant =
+      whileOutOfView != null && typeof whileOutOfView !== "string";
+    const inlineWhileScrollVariant =
+      whileScroll != null && typeof whileScroll !== "string";
+    const inlineWhileHoverVariant =
+      whileHover != null && typeof whileHover !== "string";
+    const inlineWhileTapVariant =
+      whileTap != null && typeof whileTap !== "string";
+    const inlineWhileFocusVariant =
+      whileFocus != null && typeof whileFocus !== "string";
+    const whileInViewLabel: string | undefined = inlineWhileInViewVariant
+      ? "__fetta_whileInView__"
+      : (whileInView as string | undefined);
+    const whileOutOfViewLabel: string | undefined = inlineWhileOutOfViewVariant
+      ? "__fetta_whileOutOfView__"
+      : (whileOutOfView as string | undefined);
+    const whileScrollLabel: string | undefined = inlineWhileScrollVariant
+      ? "__fetta_whileScroll__"
+      : (whileScroll as string | undefined);
+    const whileHoverLabel: string | undefined = inlineWhileHoverVariant
+      ? "__fetta_whileHover__"
+      : (whileHover as string | undefined);
+    const whileTapLabel: string | undefined = inlineWhileTapVariant
+      ? "__fetta_whileTap__"
+      : (whileTap as string | undefined);
+    const whileFocusLabel: string | undefined = inlineWhileFocusVariant
+      ? "__fetta_whileFocus__"
+      : (whileFocus as string | undefined);
+
     // Detect whether viewport observer is needed
     const needsViewport = !!(
-      whileInView ||
-      whileOutOfView ||
+      whileInViewLabel ||
+      whileOutOfViewLabel ||
       onViewportEnter ||
       onViewportLeave ||
       resetOnViewportLeave ||
@@ -1445,23 +1484,18 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
     const viewportOnce = viewport?.once ?? false;
     const viewportRoot = viewport?.root?.current ?? null;
 
-    const inlineInitialVariant =
-      initialVariant != null &&
-      initialVariant !== false &&
-      typeof initialVariant !== "string";
-    const inlineAnimateVariant =
-      animateVariantName != null && typeof animateVariantName !== "string";
-    const inlineExitVariant =
-      exit != null && exit !== false && typeof exit !== "string";
-    const inlineWhileScrollVariant =
-      whileScroll != null && typeof whileScroll !== "string";
     const resolvedVariants = useMemo(() => {
       if (
         !variants &&
         !inlineInitialVariant &&
         !inlineAnimateVariant &&
         !inlineExitVariant &&
-        !inlineWhileScrollVariant
+        !inlineWhileInViewVariant &&
+        !inlineWhileOutOfViewVariant &&
+        !inlineWhileScrollVariant &&
+        !inlineWhileHoverVariant &&
+        !inlineWhileTapVariant &&
+        !inlineWhileFocusVariant
       ) {
         return variants;
       }
@@ -1478,9 +1512,26 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
       if (inlineExitVariant) {
         merged.__fetta_exit__ = exit as VariantDefinition<TCustom>;
       }
+      if (inlineWhileInViewVariant) {
+        merged.__fetta_whileInView__ =
+          whileInView as VariantDefinition<TCustom>;
+      }
+      if (inlineWhileOutOfViewVariant) {
+        merged.__fetta_whileOutOfView__ =
+          whileOutOfView as VariantDefinition<TCustom>;
+      }
       if (inlineWhileScrollVariant) {
         merged.__fetta_whileScroll__ =
           whileScroll as VariantDefinition<TCustom>;
+      }
+      if (inlineWhileHoverVariant) {
+        merged.__fetta_whileHover__ = whileHover as VariantDefinition<TCustom>;
+      }
+      if (inlineWhileTapVariant) {
+        merged.__fetta_whileTap__ = whileTap as VariantDefinition<TCustom>;
+      }
+      if (inlineWhileFocusVariant) {
+        merged.__fetta_whileFocus__ = whileFocus as VariantDefinition<TCustom>;
       }
       return merged;
     }, [
@@ -1488,11 +1539,21 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
       inlineInitialVariant,
       inlineAnimateVariant,
       inlineExitVariant,
+      inlineWhileInViewVariant,
+      inlineWhileOutOfViewVariant,
       inlineWhileScrollVariant,
+      inlineWhileHoverVariant,
+      inlineWhileTapVariant,
+      inlineWhileFocusVariant,
       initialVariant,
       animateVariantName,
       exit,
+      whileInView,
+      whileOutOfView,
       whileScroll,
+      whileHover,
+      whileTap,
+      whileFocus,
     ]);
 
     const initialLabel: string | false | undefined = inlineInitialVariant
@@ -1504,13 +1565,10 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
     const exitLabel: string | false | undefined = inlineExitVariant
       ? "__fetta_exit__"
       : exit;
-    const whileScrollLabel: string | undefined = inlineWhileScrollVariant
-      ? "__fetta_whileScroll__"
-      : (whileScroll as string | undefined);
     const hasVariants = !!(
       resolvedVariants && Object.keys(resolvedVariants).length
     );
-    const hasHover = !!(whileHover && hasVariants);
+    const hasHover = !!(whileHoverLabel && hasVariants);
 
     // Stable refs for callbacks and options
     const onSplitRef = useRef(onSplit);
@@ -1525,8 +1583,8 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
     const initialClassesRef = useRef(initialClasses);
     const resetOnViewportLeaveRef = useRef(resetOnViewportLeave);
     const initialVariantRef = useRef(initialLabel);
-    const whileInViewRef = useRef(whileInView);
-    const whileOutOfViewRef = useRef(whileOutOfView);
+    const whileInViewRef = useRef(whileInViewLabel);
+    const whileOutOfViewRef = useRef(whileOutOfViewLabel);
     const debugPresence =
       (options as { __debugPresence?: boolean } | undefined)?.__debugPresence ===
       true;
@@ -1544,8 +1602,8 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
       initialClassesRef.current = initialClasses;
       resetOnViewportLeaveRef.current = resetOnViewportLeave;
       initialVariantRef.current = initialLabel;
-      whileInViewRef.current = whileInView;
-      whileOutOfViewRef.current = whileOutOfView;
+      whileInViewRef.current = whileInViewLabel;
+      whileOutOfViewRef.current = whileOutOfViewLabel;
     });
 
     useEffect(() => {
@@ -1891,8 +1949,8 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
       }
     }, [hasHover]);
 
-    const hasTap = !!(whileTap && hasVariants);
-    const hasFocus = !!(whileFocus && hasVariants);
+    const hasTap = !!(whileTapLabel && hasVariants);
+    const hasFocus = !!(whileFocusLabel && hasVariants);
     const {
       onTapStart: userOnTapStart,
       onTapCancel: userOnTapCancel,
@@ -2197,7 +2255,7 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
     const shouldRevertOnComplete =
       hasVariants &&
       !!animateLabel &&
-      !whileInView &&
+      !whileInViewLabel &&
       !needsViewport &&
       !whileScrollLabel &&
       revertOnComplete;
@@ -2396,9 +2454,9 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
 
     const counters = { char: 0, word: 0, line: 0 };
     const exitProp = exitLabel === false ? undefined : exitLabel;
-    const hoverVariant = hasHover ? whileHover : undefined;
-    const tapVariant = hasTap ? whileTap : undefined;
-    const focusVariant = hasFocus ? whileFocus : undefined;
+    const hoverVariant = hasHover ? whileHoverLabel : undefined;
+    const tapVariant = hasTap ? whileTapLabel : undefined;
+    const focusVariant = hasFocus ? whileFocusLabel : undefined;
     const hasWrapperVariants = Object.keys(wrapperVariantsByName).length > 0;
     const interactionVariant =
       (isTapped && tapVariant) ||

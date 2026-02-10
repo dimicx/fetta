@@ -338,6 +338,92 @@ describe("SplitText motion parity", () => {
     });
   });
 
+  it("applies interaction trigger priority with inline while variants", async () => {
+    render(
+      <SplitText
+        className="wrapper"
+        variants={{
+          idle: { opacity: 0.5 },
+        }}
+        initial="idle"
+        animate="idle"
+        whileHover={{ opacity: 0.7 }}
+        whileFocus={{ opacity: 0.85 }}
+        whileTap={{ opacity: 1 }}
+        options={{ type: "chars" }}
+      >
+        <p>Hi</p>
+      </SplitText>
+    );
+
+    const motionReact = await getMotionReactTestAPI();
+
+    await waitFor(() => {
+      const wrapper = getLatestWrapperEntry(motionReact.__getMotionElements());
+      expect(wrapper?.props.animate).toBe("idle");
+    });
+
+    act(() => {
+      const wrapper = getLatestWrapperEntry(motionReact.__getMotionElements());
+      (wrapper?.props.onHoverStart as (() => void) | undefined)?.();
+    });
+
+    await waitFor(() => {
+      const wrapper = getLatestWrapperEntry(motionReact.__getMotionElements());
+      expect(wrapper?.props.animate).toBe("__fetta_whileHover__");
+    });
+
+    act(() => {
+      const wrapper = getLatestWrapperEntry(motionReact.__getMotionElements());
+      (wrapper?.props.onFocus as (() => void) | undefined)?.();
+    });
+
+    await waitFor(() => {
+      const wrapper = getLatestWrapperEntry(motionReact.__getMotionElements());
+      expect(wrapper?.props.animate).toBe("__fetta_whileFocus__");
+    });
+
+    act(() => {
+      const wrapper = getLatestWrapperEntry(motionReact.__getMotionElements());
+      (wrapper?.props.onTapStart as (() => void) | undefined)?.();
+    });
+
+    await waitFor(() => {
+      const wrapper = getLatestWrapperEntry(motionReact.__getMotionElements());
+      expect(wrapper?.props.animate).toBe("__fetta_whileTap__");
+    });
+
+    act(() => {
+      const wrapper = getLatestWrapperEntry(motionReact.__getMotionElements());
+      (wrapper?.props.onTap as (() => void) | undefined)?.();
+    });
+
+    await waitFor(() => {
+      const wrapper = getLatestWrapperEntry(motionReact.__getMotionElements());
+      expect(wrapper?.props.animate).toBe("__fetta_whileFocus__");
+    });
+
+    act(() => {
+      const wrapper = getLatestWrapperEntry(motionReact.__getMotionElements());
+      (wrapper?.props.onBlur as (() => void) | undefined)?.();
+    });
+
+    await waitFor(() => {
+      const wrapper = getLatestWrapperEntry(motionReact.__getMotionElements());
+      expect(wrapper?.props.animate).toBe("__fetta_whileHover__");
+    });
+
+    act(() => {
+      const wrapper = getLatestWrapperEntry(motionReact.__getMotionElements());
+      (wrapper?.props.onHoverEnd as (() => void) | undefined)?.();
+    });
+
+    await waitFor(() => {
+      const wrapper = getLatestWrapperEntry(motionReact.__getMotionElements());
+      expect(wrapper?.props.animate).toBe("idle");
+    });
+  });
+
   it("resolves delay functions globally by default", async () => {
     render(
       <SplitText

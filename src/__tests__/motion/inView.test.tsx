@@ -62,6 +62,13 @@ function getMotionByClass(className: string) {
   });
 }
 
+function getLatestSplitCharEntry(index: number) {
+  const entries = getMotionByClass("split-char").filter(
+    (entry) => entry.props["data-char-index"] === String(index)
+  );
+  return entries[entries.length - 1];
+}
+
 describe("SplitText viewport (motion)", () => {
   beforeEach(() => {
     resetIntersectionObserver();
@@ -211,6 +218,87 @@ describe("SplitText viewport (motion)", () => {
     });
 
     expect(scrollMock).toHaveBeenCalled();
+  });
+
+  it("supports inline whileInView object variants without variants map", async () => {
+    render(
+      <SplitText
+        whileInView={{
+          chars: { opacity: 1 },
+        }}
+        options={{ type: "chars" }}
+      >
+        <p>Hello</p>
+      </SplitText>
+    );
+
+    await waitFor(() => {
+      const observer = getLastIntersectionObserver();
+      expect(observer).not.toBeNull();
+    });
+
+    const observer = getLastIntersectionObserver();
+
+    act(() => {
+      observer?.trigger([
+        {
+          isIntersecting: true,
+          intersectionRatio: 1,
+        },
+      ]);
+    });
+
+    await waitFor(() => {
+      expect(getLatestSplitCharEntry(0)?.props.animate).toBe(
+        "__fetta_whileInView__"
+      );
+    });
+  });
+
+  it("applies inline whileOutOfView variant after first viewport entry and leave", async () => {
+    render(
+      <SplitText
+        animate={{
+          chars: { opacity: 0.5 },
+        }}
+        whileOutOfView={{
+          chars: { opacity: 0.1 },
+        }}
+        options={{ type: "chars" }}
+      >
+        <p>Hello</p>
+      </SplitText>
+    );
+
+    await waitFor(() => {
+      expect(getLatestSplitCharEntry(0)?.props.animate).toBe("__fetta_animate__");
+    });
+
+    const observer = getLastIntersectionObserver();
+
+    act(() => {
+      observer?.trigger([
+        {
+          isIntersecting: true,
+          intersectionRatio: 1,
+        },
+      ]);
+    });
+
+    act(() => {
+      observer?.trigger([
+        {
+          isIntersecting: false,
+          intersectionRatio: 0,
+        },
+      ]);
+    });
+
+    await waitFor(() => {
+      expect(getLatestSplitCharEntry(0)?.props.animate).toBe(
+        "__fetta_whileOutOfView__"
+      );
+    });
   });
 
   it("compiles whileScroll delays into timeline at offsets", async () => {
