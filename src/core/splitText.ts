@@ -4,8 +4,6 @@
  * applies margin compensation, and detects lines based on rendered positions.
  */
 
-import { renderSplitTextData } from "../internal/splitTextRender";
-
 // Tags whose implicit ARIA role allows aria-label (headings, landmarks, interactive elements).
 // Other elements (span, div, p, etc.) use a sr-only copy instead.
 const ARIA_LABEL_ALLOWED_TAGS = new Set([
@@ -2025,42 +2023,73 @@ export function splitText(
   let currentLines: HTMLSpanElement[] = [];
   let useAriaLabel = false;
 
-  const applyData = (data: SplitTextData) => {
-    const rendered = renderSplitTextData(element, data);
+  const applyDirectSplit = () => {
+    const trackAncestors = hasInlineDescendants(element);
+    const measuredWords = collectTextStructure(element, trackAncestors);
+    useAriaLabel =
+      !trackAncestors &&
+      ARIA_LABEL_ALLOWED_TAGS.has(element.tagName.toLowerCase());
+
+    const rendered = performSplit(
+      element,
+      measuredWords,
+      charClass,
+      wordClass,
+      lineClass,
+      splitChars,
+      splitWords,
+      splitLines,
+      {
+        propIndex,
+        mask,
+        ariaHidden: useAriaLabel,
+        disableKerning,
+        isolateKerningMeasurement,
+        initialStyles,
+        initialClasses,
+      }
+    );
+
     currentChars = rendered.chars;
     currentWords = rendered.words;
     currentLines = rendered.lines;
-    useAriaLabel = data.meta.useAriaLabel;
 
-    if (useAriaLabel) {
-      if (data.meta.ariaLabel != null) {
-        element.setAttribute("aria-label", data.meta.ariaLabel);
-      } else {
-        element.removeAttribute("aria-label");
+    if (trackAncestors) {
+      injectSrOnlyStyles();
+
+      const visualWrapper = document.createElement("span");
+      visualWrapper.setAttribute("aria-hidden", "true");
+      visualWrapper.dataset.fettaVisual = "true";
+
+      while (element.firstChild) {
+        visualWrapper.appendChild(element.firstChild);
       }
-    } else if (originalAriaLabel !== null) {
-      element.setAttribute("aria-label", originalAriaLabel);
+      element.appendChild(visualWrapper);
+      element.appendChild(createScreenReaderCopy(originalHTML));
+    } else if (useAriaLabel) {
+      if (originalAriaLabel === null) {
+        element.setAttribute("aria-label", text);
+      }
+    } else {
+      injectSrOnlyStyles();
+
+      const visualWrapper = document.createElement("span");
+      visualWrapper.setAttribute("aria-hidden", "true");
+      visualWrapper.dataset.fettaVisual = "true";
+
+      while (element.firstChild) {
+        visualWrapper.appendChild(element.firstChild);
+      }
+      element.appendChild(visualWrapper);
+      element.appendChild(createScreenReaderCopy(originalHTML));
     }
 
-    // If splitting chars, force disable ligatures for consistency
     if (splitChars) {
       element.style.fontVariantLigatures = "none";
     }
   };
 
-  const initialData = splitTextData(element, {
-    type,
-    charClass,
-    wordClass,
-    lineClass,
-    mask,
-    propIndex,
-    disableKerning,
-    isolateKerningMeasurement,
-    initialStyles,
-    initialClasses,
-  });
-  applyData(initialData);
+  applyDirectSplit();
 
   // Cleanup function to disconnect observers and timers
   const dispose = () => {
@@ -2144,19 +2173,7 @@ export function splitText(
         // Re-split after layout is complete
         requestAnimationFrame(() => {
           if (!isActive) return;
-          const nextData = splitTextData(element, {
-            type,
-            charClass,
-            wordClass,
-            lineClass,
-            mask,
-            propIndex,
-            disableKerning,
-            isolateKerningMeasurement,
-            initialStyles,
-            initialClasses,
-          });
-          applyData(nextData);
+          applyDirectSplit();
 
           // Only trigger callback if lines actually changed
           const newFingerprint = getLineFingerprint(currentLines);
