@@ -67,6 +67,45 @@ describe("splitText", () => {
       // "Hello World" = 11 characters (including space as word separator)
       expect(result.chars).toHaveLength(10); // Space is not a char span
     });
+
+    it("measures kerning in a shared document-level root", () => {
+      const rootsBefore = document.querySelectorAll('[data-fetta-kerning-root="true"]').length;
+
+      const first = document.createElement("p");
+      first.textContent = "Hello";
+      container.appendChild(first);
+      splitText(first, { type: "chars" });
+
+      const rootsAfterFirst = document.querySelectorAll('[data-fetta-kerning-root="true"]').length;
+      expect(rootsAfterFirst).toBe(rootsBefore + (rootsBefore === 0 ? 1 : 0));
+
+      const second = document.createElement("p");
+      second.textContent = "World";
+      container.appendChild(second);
+      splitText(second, { type: "chars" });
+
+      const rootsAfterSecond = document.querySelectorAll('[data-fetta-kerning-root="true"]').length;
+      expect(rootsAfterSecond).toBe(rootsAfterFirst);
+
+      const root = document.querySelector('[data-fetta-kerning-root="true"]');
+      expect(root).not.toBeNull();
+      expect(container.contains(root)).toBe(false);
+    });
+
+    it("uses legacy in-container measurement when isolateKerningMeasurement is false", () => {
+      document
+        .querySelectorAll('[data-fetta-kerning-root="true"]')
+        .forEach((root) => root.remove());
+
+      const element = document.createElement("p");
+      element.textContent = "Hello";
+      container.appendChild(element);
+
+      splitText(element, { type: "chars", isolateKerningMeasurement: false });
+
+      const roots = document.querySelectorAll('[data-fetta-kerning-root="true"]');
+      expect(roots).toHaveLength(0);
+    });
   });
 
   describe("nested elements", () => {

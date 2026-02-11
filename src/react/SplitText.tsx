@@ -36,6 +36,9 @@ export interface SplitTextOptions {
    * Kerning is naturally lost when splitting into inline-block spans.
    * Use this if you prefer no compensation over imperfect Safari compensation. */
   disableKerning?: boolean;
+  /** Measure kerning in a document-level isolated root to avoid ancestor transform effects.
+   * Disable to use legacy in-container measurement behavior. */
+  isolateKerningMeasurement?: boolean;
 }
 
 /** Matches Motion's viewport prop */

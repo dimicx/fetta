@@ -65,6 +65,9 @@ export interface SplitTextOptions {
    * Kerning is naturally lost when splitting into inline-block spans.
    * Use this if you prefer no compensation over imperfect Safari compensation. */
   disableKerning?: boolean;
+  /** Measure kerning in a document-level isolated root to avoid ancestor transform effects.
+   * Disable to use legacy in-container measurement behavior. */
+  isolateKerningMeasurement?: boolean;
   /** Apply initial inline styles to elements after split (and after kerning compensation).
    * Can be a static style object or a function that receives (element, index). */
   initialStyles?: {
@@ -163,6 +166,7 @@ export function splitTextData(
     mask,
     propIndex = false,
     disableKerning = false,
+    isolateKerningMeasurement = true,
     initialStyles,
     initialClasses,
   }: SplitTextOptions = {}
@@ -233,6 +237,7 @@ export function splitTextData(
       mask,
       ariaHidden: useAriaLabel,
       disableKerning,
+      isolateKerningMeasurement,
       initialStyles,
       initialClasses,
     }
@@ -363,6 +368,12 @@ const INLINE_ELEMENTS = new Set([
  */
 const KERNING_STYLE_PROPS = [
   "font",
+  "font-family",
+  "font-size",
+  "font-style",
+  "font-weight",
+  "font-variant",
+  "line-height",
   "font-kerning",
   "font-variant-ligatures",
   "font-feature-settings",
@@ -382,16 +393,24 @@ const KERNING_STYLE_PROPS = [
   "text-transform",
   "direction",
   "unicode-bidi",
+  "writing-mode",
+  "text-orientation",
+  "text-combine-upright",
 ] as const;
+const KERNING_STYLE_PROPS_SET = new Set<string>(KERNING_STYLE_PROPS);
 
 function copyKerningStyles(
   target: HTMLElement,
   styles: CSSStyleDeclaration
 ): void {
-  KERNING_STYLE_PROPS.forEach((prop) => {
+  for (let i = 0; i < styles.length; i++) {
+    const prop = styles[i];
+    if (!KERNING_STYLE_PROPS_SET.has(prop) && !prop.startsWith("font-")) {
+      continue;
+    }
     const value = styles.getPropertyValue(prop);
     if (value) target.style.setProperty(prop, value);
-  });
+  }
 }
 
 function buildKerningStyleKey(styles: CSSStyleDeclaration): string {
@@ -407,13 +426,40 @@ function isSafari(): boolean {
   return isSafariBrowser;
 }
 
+// Shared hidden roots per document for transform-isolated kerning measurement.
+const kerningMeasureRoots = new WeakMap<Document, HTMLDivElement>();
+
+function getKerningMeasureRoot(doc: Document): HTMLDivElement | null {
+  const existing = kerningMeasureRoots.get(doc);
+  if (existing && existing.isConnected) return existing;
+
+  const host = doc.body ?? doc.documentElement;
+  if (!host) return null;
+
+  const root = doc.createElement("div");
+  root.setAttribute("data-fetta-kerning-root", "true");
+  root.style.cssText = [
+    "position:fixed",
+    "left:0",
+    "top:0",
+    "visibility:hidden",
+    "pointer-events:none",
+    "z-index:-2147483647",
+    "contain:layout paint",
+  ].join(";");
+
+  host.appendChild(root);
+  kerningMeasureRoots.set(doc, root);
+  return root;
+}
+
 /**
  * Measure kerning using DOM elements.
  * Slower but accurate - inherits all styles including -webkit-font-smoothing.
  * Used for Safari where font-smoothing affects glyph metrics.
  */
 function measureKerningDOM(
-  container: HTMLElement,
+  measureRoot: HTMLElement,
   styleSource: HTMLElement,
   chars: string[],
   styles?: CSSStyleDeclaration
@@ -421,7 +467,8 @@ function measureKerningDOM(
   const kerningMap = new Map<number, number>();
   if (chars.length < 2) return kerningMap;
 
-  const measurer = document.createElement('span');
+  const doc = styleSource.ownerDocument;
+  const measurer = doc.createElement('span');
   measurer.style.cssText = `
     position: absolute;
     visibility: hidden;
@@ -445,7 +492,7 @@ function measureKerningDOM(
     measurer.style.MozOsxFontSmoothing = mozSmoothing;
   }
 
-  container.appendChild(measurer);
+  measureRoot.appendChild(measurer);
 
   // Measure unique chars first (deduplicated)
   const charWidths = new Map<string, number>();
@@ -468,7 +515,7 @@ function measureKerningDOM(
     }
   }
 
-  container.removeChild(measurer);
+  measureRoot.removeChild(measurer);
   return kerningMap;
 }
 
@@ -478,7 +525,7 @@ function measureKerningDOM(
  * Used for non-Safari browsers (Chrome, Firefox, Edge).
  */
 function measureKerningRange(
-  container: HTMLElement,
+  measureRoot: HTMLElement,
   styleSource: HTMLElement,
   chars: string[],
   styles?: CSSStyleDeclaration
@@ -486,14 +533,15 @@ function measureKerningRange(
   const kerningMap = new Map<number, number>();
   if (chars.length < 2) return kerningMap;
 
-  const measurer = document.createElement('span');
+  const doc = styleSource.ownerDocument;
+  const measurer = doc.createElement('span');
   measurer.style.cssText = 'position:absolute;visibility:hidden;white-space:pre;';
 
   const computedStyles = styles ?? getComputedStyle(styleSource);
   copyKerningStyles(measurer, computedStyles);
-  container.appendChild(measurer);
+  measureRoot.appendChild(measurer);
 
-  const range = document.createRange();
+  const range = doc.createRange();
   const measureWidth = (): number => {
     const textNode = measurer.firstChild;
     if (!textNode) return 0;
@@ -520,7 +568,7 @@ function measureKerningRange(
   }
 
   range.detach();
-  container.removeChild(measurer);
+  measureRoot.removeChild(measurer);
   return kerningMap;
 }
 
@@ -533,21 +581,45 @@ function measureKerning(
   container: HTMLElement,
   styleSource: HTMLElement,
   chars: string[],
-  styles?: CSSStyleDeclaration
+  styles?: CSSStyleDeclaration,
+  isolateKerningMeasurement = true
 ): Map<number, number> {
   if (chars.length < 2) return new Map();
 
-  if (!container.isConnected) {
+  if (!styleSource.isConnected) {
     console.warn('splitText: kerning measurement requires a connected DOM element. Skipping kerning.');
     return new Map();
   }
 
   const computedStyles = styles ?? getComputedStyle(styleSource);
 
+  if (!isolateKerningMeasurement) {
+    if (!container.isConnected) {
+      console.warn('splitText: kerning measurement requires a connected DOM element. Skipping kerning.');
+      return new Map();
+    }
+    return isSafari()
+      ? measureKerningDOM(container, styleSource, chars, computedStyles)
+      : measureKerningRange(container, styleSource, chars, computedStyles);
+  }
+
+  const measureRoot = getKerningMeasureRoot(styleSource.ownerDocument);
+
+  if (!measureRoot) {
+    if (!container.isConnected) {
+      console.warn('splitText: kerning measurement requires a connected DOM element. Skipping kerning.');
+      return new Map();
+    }
+    // Fallback to local container if no root is available (very rare).
+    return isSafari()
+      ? measureKerningDOM(container, styleSource, chars, computedStyles)
+      : measureKerningRange(container, styleSource, chars, computedStyles);
+  }
+
   // Safari needs DOM-based measurement for font-smoothing accuracy.
   return isSafari()
-    ? measureKerningDOM(container, styleSource, chars, computedStyles)
-    : measureKerningRange(container, styleSource, chars, computedStyles);
+    ? measureKerningDOM(measureRoot, styleSource, chars, computedStyles)
+    : measureKerningRange(measureRoot, styleSource, chars, computedStyles);
 }
 
 // Track whether screen reader styles have been injected
@@ -1180,6 +1252,7 @@ function performSplit(
     mask?: "lines" | "words" | "chars";
     ariaHidden?: boolean;
     disableKerning?: boolean;
+    isolateKerningMeasurement?: boolean;
     initialStyles?: SplitTextOptions['initialStyles'];
     initialClasses?: SplitTextOptions['initialClasses'];
   }
@@ -1464,7 +1537,13 @@ function performSplit(
         for (const group of styleGroups) {
           if (group.chars.length < 2) continue;
           const charStrings = group.chars.map(c => c.textContent || '');
-          const kerningMap = measureKerning(element, group.styleSource, charStrings, group.styles);
+          const kerningMap = measureKerning(
+            element,
+            group.styleSource,
+            charStrings,
+            group.styles,
+            options?.isolateKerningMeasurement !== false
+          );
 
           // Apply kerning adjustments (negative = tighter, positive = looser)
           for (const [charIndex, kerning] of kerningMap) {
@@ -1511,7 +1590,13 @@ function performSplit(
         // Measure the full cross-word kerning: "lastChar + space + firstChar"
         // Total kerning = width("X Y") - width("X") - width(" ") - width("Y")
         const styles = getComputedStyle(firstCharSpan);
-        const kerningMap = measureKerning(element, firstCharSpan, [lastChar, " ", firstChar], styles);
+        const kerningMap = measureKerning(
+          element,
+          firstCharSpan,
+          [lastChar, " ", firstChar],
+          styles,
+          options?.isolateKerningMeasurement !== false
+        );
 
         // kerningMap will have kerning at index 1 (space) and index 2 (firstChar)
         // We apply the sum to the first char of the next word
@@ -1553,7 +1638,13 @@ function performSplit(
 
         // Measure the full cross-word kerning
         const styles = getComputedStyle(currWord);
-        const kerningMap = measureKerning(element, currWord, [lastChar, " ", firstChar], styles);
+        const kerningMap = measureKerning(
+          element,
+          currWord,
+          [lastChar, " ", firstChar],
+          styles,
+          options?.isolateKerningMeasurement !== false
+        );
 
         let totalKerning = 0;
         if (kerningMap.has(1)) totalKerning += kerningMap.get(1)!;
@@ -1878,6 +1969,7 @@ export function splitText(
     revertOnComplete = false,
     propIndex = false,
     disableKerning = false,
+    isolateKerningMeasurement = true,
     initialStyles,
     initialClasses,
   }: SplitTextOptions = {}
@@ -1964,6 +2056,7 @@ export function splitText(
     mask,
     propIndex,
     disableKerning,
+    isolateKerningMeasurement,
     initialStyles,
     initialClasses,
   });
@@ -2059,6 +2152,7 @@ export function splitText(
             mask,
             propIndex,
             disableKerning,
+            isolateKerningMeasurement,
             initialStyles,
             initialClasses,
           });
