@@ -449,6 +449,12 @@ interface RelationMaps {
   counts: { chars: number; words: number; lines: number };
 }
 
+interface SplitDataLayout {
+  relations: RelationMaps;
+  maps: IndexMaps;
+  propsByNode: Map<SplitTextDataNode, Record<string, unknown>>;
+}
+
 function collectRelations(nodes: SplitTextDataNode[]): RelationMaps {
   const charToWord: number[] = [];
   const charToLine: number[] = [];
@@ -1211,6 +1217,24 @@ function attrsToProps(attrs: Record<string, string>): Record<string, unknown> {
   return props;
 }
 
+function buildNodePropsMap(
+  nodes: SplitTextDataNode[]
+): Map<SplitTextDataNode, Record<string, unknown>> {
+  const propsByNode = new Map<SplitTextDataNode, Record<string, unknown>>();
+
+  const walk = (list: SplitTextDataNode[]) => {
+    for (const node of list) {
+      if (node.type !== "element") continue;
+      propsByNode.set(node, attrsToProps(node.attrs));
+      walk(node.children);
+    }
+  };
+
+  walk(nodes);
+
+  return propsByNode;
+}
+
 function serializeInitial(value: unknown): string {
   if (value == null) return "";
   if (typeof value === "function") return value.toString();
@@ -1310,8 +1334,16 @@ function collectSplitElements(
   return { chars, words, lines, revert: () => {} };
 }
 
+function buildSplitDataLayout(data: SplitTextData): SplitDataLayout {
+  const relations = collectRelations(data.nodes);
+  const maps = buildIndexMaps(relations);
+  const propsByNode = buildNodePropsMap(data.nodes);
+
+  return { relations, maps, propsByNode };
+}
+
 function buildVariantInfos<TCustom = unknown>(
-  data: SplitTextData | null,
+  splitDataLayout: SplitDataLayout | null,
   isPresent: boolean,
   custom?: TCustom
 ): {
@@ -1320,7 +1352,7 @@ function buildVariantInfos<TCustom = unknown>(
   lineInfos: VariantInfo<TCustom>[];
   counts: { chars: number; words: number; lines: number };
 } {
-  if (!data) {
+  if (!splitDataLayout) {
     return {
       charInfos: [],
       wordInfos: [],
@@ -1329,8 +1361,7 @@ function buildVariantInfos<TCustom = unknown>(
     };
   }
 
-  const relations = collectRelations(data.nodes);
-  const maps = buildIndexMaps(relations);
+  const { maps, relations } = splitDataLayout;
   const { chars, words, lines } = relations.counts;
 
   const charInfos = new Array(chars)
@@ -1787,10 +1818,15 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
       };
     }, [childElement, measureAndSetData, waitForFonts]);
 
+    const splitDataLayout = useMemo(
+      () => (data ? buildSplitDataLayout(data) : null),
+      [data]
+    );
+
     // Build VariantInfo arrays for function variants
     const variantInfo = useMemo(
-      () => buildVariantInfos(data, isPresent, custom),
-      [data, isPresent, custom]
+      () => buildVariantInfos(splitDataLayout, isPresent, custom),
+      [splitDataLayout, isPresent, custom]
     );
 
     const targetType = useMemo(() => {
@@ -1836,6 +1872,7 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
         reduceMotionActive,
       ]
     );
+    const nodePropsMap = splitDataLayout?.propsByNode;
 
     const exitTypes = useMemo(() => {
       const exitKey = typeof exitLabel === "string" ? exitLabel : null;
@@ -2149,7 +2186,11 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
       if (!data || !childElement) return;
 
       const splitElements = collectSplitElements(childElement, optionsRef.current);
-      const expectedCounts = collectRelations(data.nodes).counts;
+      const expectedCounts = splitDataLayout?.relations.counts ?? {
+        chars: 0,
+        words: 0,
+        lines: 0,
+      };
       const missingExpectedElements =
         (expectedCounts.chars > 0 && splitElements.chars.length === 0) ||
         (expectedCounts.words > 0 && splitElements.words.length === 0) ||
@@ -2220,7 +2261,7 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
       }
 
       return undefined;
-    }, [data, childElement, needsViewport, hasVariants]);
+    }, [data, childElement, needsViewport, hasVariants, splitDataLayout]);
 
     useEffect(() => {
       if (!needsViewport) {
@@ -2505,7 +2546,7 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
         return node.text;
       }
 
-      const props = attrsToProps(node.attrs);
+      const props = nodePropsMap?.get(node) ?? attrsToProps(node.attrs);
       const renderedChildren = renderNodes(node.children, key);
       const isVoidTag = VOID_HTML_TAGS.has(node.tag);
 
