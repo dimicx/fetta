@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { splitText } from "../../core/splitText";
 import { getLastResizeObserver, resetResizeObserver } from "../setup";
 
-describe("splitText autoSplit", () => {
+describe("splitText resize behavior", () => {
   let container: HTMLDivElement;
   let parentElement: HTMLDivElement;
 
@@ -34,16 +34,16 @@ describe("splitText autoSplit", () => {
     expect(observer?.elements.has(parentElement)).toBe(true);
   });
 
-  it("does not create ResizeObserver when autoSplit is false", () => {
+  it("sets up kerning upkeep observer when autoSplit is false", () => {
     const element = document.createElement("p");
     element.textContent = "Hello World";
     parentElement.appendChild(element);
 
-    splitText(element, { autoSplit: false });
+    splitText(element, { autoSplit: false, type: "chars,words" });
 
     const observer = getLastResizeObserver();
-    // Observer should not have been created (or at least not observing)
-    expect(observer?.elements.size ?? 0).toBe(0);
+    expect(observer).not.toBeNull();
+    expect(observer?.elements.has(element)).toBe(true);
   });
 
   it("debounces resize events with 200ms delay", () => {
@@ -182,5 +182,96 @@ describe("splitText autoSplit", () => {
 
     // onResplit should not be called since element is disconnected
     expect(onResplit).not.toHaveBeenCalled();
+  });
+
+  it("updates kerning-only without rebuilding nodes when lines are disabled", () => {
+    const element = document.createElement("p");
+    element.textContent = "Hello World";
+    parentElement.appendChild(element);
+    element.style.fontSize = "20px";
+
+    const onResplit = vi.fn();
+    const result = splitText(element, {
+      autoSplit: false,
+      type: "chars,words",
+      onResplit,
+    });
+
+    const firstCharBefore = result.chars[0];
+    const firstWordBefore = result.words[0];
+    expect(firstCharBefore).toBeTruthy();
+    expect(firstWordBefore).toBeTruthy();
+
+    element.style.fontSize = "32px";
+    window.dispatchEvent(new Event("resize"));
+    vi.advanceTimersByTime(200);
+    vi.runAllTimers();
+
+    const firstCharAfter = element.querySelector<HTMLSpanElement>(".split-char");
+    const firstWordAfter = element.querySelector<HTMLSpanElement>(".split-word");
+    expect(firstCharAfter).toBe(firstCharBefore);
+    expect(firstWordAfter).toBe(firstWordBefore);
+    expect(onResplit).not.toHaveBeenCalled();
+  });
+
+  it("runs full resplit when style changes and lines are enabled", () => {
+    const element = document.createElement("p");
+    element.textContent = "Hello World";
+    parentElement.appendChild(element);
+    element.style.fontSize = "20px";
+
+    splitText(element, {
+      autoSplit: false,
+      type: "chars,words,lines",
+    });
+
+    const firstLineBefore = element.querySelector<HTMLSpanElement>(".split-line");
+    expect(firstLineBefore).toBeTruthy();
+
+    element.style.fontSize = "32px";
+    window.dispatchEvent(new Event("resize"));
+    vi.advanceTimersByTime(200);
+    vi.runAllTimers();
+
+    const firstLineAfter = element.querySelector<HTMLSpanElement>(".split-line");
+    expect(firstLineAfter).toBeTruthy();
+    expect(firstLineAfter).not.toBe(firstLineBefore);
+  });
+
+  it("does not resplit when style key is unchanged", () => {
+    const element = document.createElement("p");
+    element.textContent = "Hello World";
+    parentElement.appendChild(element);
+
+    const result = splitText(element, {
+      autoSplit: false,
+      type: "chars,words",
+    });
+
+    const firstCharBefore = result.chars[0];
+    window.dispatchEvent(new Event("resize"));
+    vi.advanceTimersByTime(200);
+    vi.runAllTimers();
+
+    const firstCharAfter = element.querySelector<HTMLSpanElement>(".split-char");
+    expect(firstCharAfter).toBe(firstCharBefore);
+  });
+
+  it("disconnects kerning observer on revert", () => {
+    const element = document.createElement("p");
+    element.textContent = "Hello World";
+    parentElement.appendChild(element);
+
+    const result = splitText(element, {
+      autoSplit: false,
+      type: "chars,words",
+    });
+
+    const observer = getLastResizeObserver();
+    expect(observer?.elements.has(element)).toBe(true);
+
+    result.revert();
+
+    expect(observer?.elements.size).toBe(0);
   });
 });

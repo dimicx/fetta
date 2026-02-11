@@ -103,6 +103,65 @@ describe("SplitText React Component", () => {
     });
   });
 
+  it("updates kerning without replacing nodes when lines are disabled", async () => {
+    const onResplit = vi.fn();
+    const { container } = render(
+      <SplitText
+        options={{ type: "chars,words" }}
+        onResplit={onResplit}
+      >
+        <p style={{ fontSize: "20px" }}>Hello World</p>
+      </SplitText>
+    );
+
+    await waitFor(() => {
+      expect(container.querySelectorAll(".split-char").length).toBeGreaterThan(0);
+    });
+
+    const firstCharBefore = container.querySelector(".split-char");
+    const childElement = container.querySelector("p") as HTMLElement | null;
+    expect(firstCharBefore).toBeTruthy();
+    expect(childElement).toBeTruthy();
+
+    await act(async () => {
+      childElement!.style.fontSize = "32px";
+      window.dispatchEvent(new Event("resize"));
+      await new Promise((resolve) => setTimeout(resolve, 260));
+    });
+
+    const firstCharAfter = container.querySelector(".split-char");
+    expect(firstCharAfter).toBe(firstCharBefore);
+    expect(onResplit).not.toHaveBeenCalled();
+  });
+
+  it("runs full resplit in line mode when typography style changes", async () => {
+    const { container } = render(
+      <SplitText options={{ type: "chars,words,lines" }}>
+        <p style={{ fontSize: "20px" }}>Hello World</p>
+      </SplitText>
+    );
+
+    await waitFor(() => {
+      expect(container.querySelectorAll(".split-line").length).toBeGreaterThan(0);
+    });
+
+    const firstLineBefore = container.querySelector(".split-line");
+    const childElement = container.querySelector("p") as HTMLElement | null;
+    expect(firstLineBefore).toBeTruthy();
+    expect(childElement).toBeTruthy();
+
+    await act(async () => {
+      childElement!.style.fontSize = "32px";
+      window.dispatchEvent(new Event("resize"));
+      await new Promise((resolve) => setTimeout(resolve, 260));
+      await new Promise((resolve) => setTimeout(resolve, 40));
+    });
+
+    const firstLineAfter = container.querySelector(".split-line");
+    expect(firstLineAfter).toBeTruthy();
+    expect(firstLineAfter).not.toBe(firstLineBefore);
+  });
+
   it("waits for fonts by default before splitting", async () => {
     let resolveFonts: () => void = () => {};
     const fontsReady = new Promise<void>((resolve) => {

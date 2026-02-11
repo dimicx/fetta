@@ -620,6 +620,265 @@ function measureKerning(
     : measureKerningRange(measureRoot, styleSource, chars, computedStyles);
 }
 
+interface KerningCompensationOptions {
+  disableKerning?: boolean;
+  isolateKerningMeasurement?: boolean;
+  mask?: "lines" | "words" | "chars";
+}
+
+function classSelector(className: string): string {
+  const tokens = className.split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) return "";
+  return `.${tokens.join(".")}`;
+}
+
+function querySplitWords(
+  element: HTMLElement,
+  wordClass: string
+): HTMLSpanElement[] {
+  const selector = classSelector(wordClass);
+  if (!selector) return [];
+  return Array.from(element.querySelectorAll<HTMLSpanElement>(selector));
+}
+
+function hasNoSpaceBefore(wordSpan: HTMLSpanElement): boolean {
+  return wordSpan.dataset.fettaNoSpaceBefore === "true";
+}
+
+function hasHardBreakBefore(wordSpan: HTMLSpanElement): boolean {
+  return wordSpan.dataset.fettaHardBreakBefore === "true";
+}
+
+function getCharKerningTarget(
+  charSpan: HTMLSpanElement,
+  mask?: "lines" | "words" | "chars"
+): HTMLElement {
+  if (mask === "chars" && charSpan.parentElement) {
+    return charSpan.parentElement;
+  }
+  return charSpan;
+}
+
+function getWordKerningTarget(
+  wordSpan: HTMLSpanElement,
+  mask?: "lines" | "words" | "chars"
+): HTMLElement {
+  if (mask === "words" && wordSpan.parentElement) {
+    return wordSpan.parentElement;
+  }
+  return wordSpan;
+}
+
+function clearKerningCompensation(
+  allWords: HTMLSpanElement[],
+  charClass: string,
+  splitChars: boolean,
+  splitWords: boolean,
+  mask?: "lines" | "words" | "chars"
+): void {
+  if (splitChars) {
+    const charSelector = classSelector(charClass);
+    if (!charSelector) return;
+    for (const wordSpan of allWords) {
+      const wordChars = Array.from(
+        wordSpan.querySelectorAll<HTMLSpanElement>(charSelector)
+      );
+      for (const charSpan of wordChars) {
+        const targetElement = getCharKerningTarget(charSpan, mask);
+        targetElement.style.marginLeft = "";
+      }
+    }
+    return;
+  }
+
+  if (splitWords) {
+    for (const wordSpan of allWords) {
+      const targetElement = getWordKerningTarget(wordSpan, mask);
+      targetElement.style.marginLeft = "";
+    }
+  }
+}
+
+function applyKerningCompensation(
+  element: HTMLElement,
+  allWords: HTMLSpanElement[],
+  charClass: string,
+  splitChars: boolean,
+  splitWords: boolean,
+  options?: KerningCompensationOptions
+): void {
+  if (options?.disableKerning) return;
+
+  if (splitChars && allWords.length > 0) {
+    const charSelector = classSelector(charClass);
+    if (!charSelector) return;
+
+    // 1. Measure kerning within each word
+    for (const wordSpan of allWords) {
+      const wordChars = Array.from(
+        wordSpan.querySelectorAll<HTMLSpanElement>(charSelector)
+      );
+      if (wordChars.length < 2) continue;
+
+      // Skip kerning for contextual scripts (Arabic, Hebrew, Thai, etc.)
+      // These scripts have letters that change form based on position,
+      // making character-by-character kerning measurement inaccurate.
+      const charStringsForCheck = wordChars.map((char) => char.textContent || "");
+      if (hasContextualScript(charStringsForCheck)) continue;
+
+      // Group consecutive chars by computed style to respect nested inline styles.
+      const styleGroups: Array<{
+        chars: HTMLSpanElement[];
+        styleSource: HTMLSpanElement;
+        styles: CSSStyleDeclaration;
+      }> = [];
+
+      const firstCharStyles = getComputedStyle(wordChars[0]);
+      let currentKey = buildKerningStyleKey(firstCharStyles);
+      let currentGroup: {
+        chars: HTMLSpanElement[];
+        styleSource: HTMLSpanElement;
+        styles: CSSStyleDeclaration;
+      } = {
+        chars: [wordChars[0]],
+        styleSource: wordChars[0],
+        styles: firstCharStyles,
+      };
+
+      for (let i = 1; i < wordChars.length; i++) {
+        const char = wordChars[i];
+        const charStyles = getComputedStyle(char);
+        const key = buildKerningStyleKey(charStyles);
+        if (key === currentKey) {
+          currentGroup.chars.push(char);
+        } else {
+          styleGroups.push(currentGroup);
+          currentKey = key;
+          currentGroup = { chars: [char], styleSource: char, styles: charStyles };
+        }
+      }
+      styleGroups.push(currentGroup);
+
+      // Measure kerning per style group (no kerning across style boundaries)
+      for (const group of styleGroups) {
+        if (group.chars.length < 2) continue;
+        const charStrings = group.chars.map((char) => char.textContent || "");
+        const kerningMap = measureKerning(
+          element,
+          group.styleSource,
+          charStrings,
+          group.styles,
+          options?.isolateKerningMeasurement !== false
+        );
+
+        // Apply kerning adjustments (negative = tighter, positive = looser)
+        for (const [charIndex, kerning] of kerningMap) {
+          const charSpan = group.chars[charIndex];
+          // Apply with sanity bound (< 20px in either direction)
+          if (charSpan && Math.abs(kerning) < 20) {
+            const targetElement = getCharKerningTarget(charSpan, options?.mask);
+            targetElement.style.marginLeft = `${kerning}px`;
+          }
+        }
+      }
+    }
+
+    // 2. Measure kerning across word boundaries (lastChar + space + firstChar)
+    for (let wordIdx = 1; wordIdx < allWords.length; wordIdx++) {
+      const currWord = allWords[wordIdx];
+      // Skip words that don't have a space before them (dash continuations)
+      if (hasNoSpaceBefore(currWord) || hasHardBreakBefore(currWord)) {
+        continue;
+      }
+
+      const prevWord = allWords[wordIdx - 1];
+      const prevChars = Array.from(
+        prevWord.querySelectorAll<HTMLSpanElement>(charSelector)
+      );
+      const currChars = Array.from(
+        currWord.querySelectorAll<HTMLSpanElement>(charSelector)
+      );
+
+      if (prevChars.length === 0 || currChars.length === 0) continue;
+
+      const lastCharSpan = prevChars[prevChars.length - 1];
+      const firstCharSpan = currChars[0];
+      const lastChar = lastCharSpan.textContent || "";
+      const firstChar = firstCharSpan.textContent || "";
+      if (!lastChar || !firstChar) continue;
+
+      // Skip kerning for contextual scripts
+      if (hasContextualScript([lastChar, firstChar])) continue;
+
+      // Measure the full cross-word kerning: "lastChar + space + firstChar"
+      // Total kerning = width("X Y") - width("X") - width(" ") - width("Y")
+      const styles = getComputedStyle(firstCharSpan);
+      const kerningMap = measureKerning(
+        element,
+        firstCharSpan,
+        [lastChar, " ", firstChar],
+        styles,
+        options?.isolateKerningMeasurement !== false
+      );
+
+      // kerningMap will have kerning at index 1 (space) and index 2 (firstChar)
+      // We apply the sum to the first char of the next word
+      let totalKerning = 0;
+      if (kerningMap.has(1)) totalKerning += kerningMap.get(1)!;
+      if (kerningMap.has(2)) totalKerning += kerningMap.get(2)!;
+
+      if (Math.abs(totalKerning) > 0.001 && Math.abs(totalKerning) < 20) {
+        const targetElement = getCharKerningTarget(firstCharSpan, options?.mask);
+        targetElement.style.marginLeft = `${totalKerning}px`;
+      }
+    }
+    return;
+  }
+
+  if (splitWords && allWords.length > 1) {
+    // Cross-word kerning for word-only splitting (no char spans)
+    // Apply margin to the word span itself
+    for (let wordIdx = 1; wordIdx < allWords.length; wordIdx++) {
+      const currWord = allWords[wordIdx];
+      if (hasNoSpaceBefore(currWord) || hasHardBreakBefore(currWord)) {
+        continue;
+      }
+
+      const prevWord = allWords[wordIdx - 1];
+
+      const prevText = prevWord.textContent || "";
+      const currText = currWord.textContent || "";
+      if (!prevText || !currText) continue;
+
+      // Get last char of previous word and first char of current word
+      const lastChar = prevText[prevText.length - 1];
+      const firstChar = currText[0];
+
+      // Skip kerning for contextual scripts
+      if (hasContextualScript([lastChar, firstChar])) continue;
+
+      // Measure the full cross-word kerning
+      const styles = getComputedStyle(currWord);
+      const kerningMap = measureKerning(
+        element,
+        currWord,
+        [lastChar, " ", firstChar],
+        styles,
+        options?.isolateKerningMeasurement !== false
+      );
+
+      let totalKerning = 0;
+      if (kerningMap.has(1)) totalKerning += kerningMap.get(1)!;
+      if (kerningMap.has(2)) totalKerning += kerningMap.get(2)!;
+
+      if (Math.abs(totalKerning) > 0.001 && Math.abs(totalKerning) < 20) {
+        const targetElement = getWordKerningTarget(currWord, options?.mask);
+        targetElement.style.marginLeft = `${totalKerning}px`;
+      }
+    }
+  }
+}
+
 // Track whether screen reader styles have been injected
 let srOnlyStylesInjected = false;
 
@@ -1292,9 +1551,11 @@ function performSplit(
 
       if (measuredWord.noSpaceBefore) {
         noSpaceBeforeSet.add(wordSpan);
+        wordSpan.dataset.fettaNoSpaceBefore = "true";
       }
       if (measuredWord.hardBreakBefore) {
         hardBreakBeforeSet.add(wordSpan);
+        wordSpan.dataset.fettaHardBreakBefore = "true";
       }
 
       if (splitChars) {
@@ -1489,173 +1750,18 @@ function performSplit(
       }
     }
 
-    // Apply kerning compensation (skip if disableKerning is true)
-    if (!options?.disableKerning && splitChars && allWords.length > 0) {
-      // 1. Measure kerning within each word
-      for (const wordSpan of allWords) {
-        const wordChars = Array.from(wordSpan.querySelectorAll<HTMLSpanElement>(`.${charClass}`));
-        if (wordChars.length < 2) continue;
-
-        // Skip kerning for contextual scripts (Arabic, Hebrew, Thai, etc.)
-        // These scripts have letters that change form based on position,
-        // making character-by-character kerning measurement inaccurate.
-        const charStringsForCheck = wordChars.map(c => c.textContent || '');
-        if (hasContextualScript(charStringsForCheck)) continue;
-
-        // Group consecutive chars by computed style to respect nested inline styles.
-        const styleGroups: Array<{
-          chars: HTMLSpanElement[];
-          styleSource: HTMLSpanElement;
-          styles: CSSStyleDeclaration;
-        }> = [];
-
-        const firstCharStyles = getComputedStyle(wordChars[0]);
-        let currentKey = buildKerningStyleKey(firstCharStyles);
-        let currentGroup: { chars: HTMLSpanElement[]; styleSource: HTMLSpanElement; styles: CSSStyleDeclaration } = {
-          chars: [wordChars[0]],
-          styleSource: wordChars[0],
-          styles: firstCharStyles,
-        };
-
-        for (let i = 1; i < wordChars.length; i++) {
-          const char = wordChars[i];
-          const charStyles = getComputedStyle(char);
-          const key = buildKerningStyleKey(charStyles);
-          if (key === currentKey) {
-            currentGroup.chars.push(char);
-          } else {
-            styleGroups.push(currentGroup);
-            currentKey = key;
-            currentGroup = { chars: [char], styleSource: char, styles: charStyles };
-          }
-        }
-        styleGroups.push(currentGroup);
-
-        // Measure kerning per style group (no kerning across style boundaries)
-        for (const group of styleGroups) {
-          if (group.chars.length < 2) continue;
-          const charStrings = group.chars.map(c => c.textContent || '');
-          const kerningMap = measureKerning(
-            element,
-            group.styleSource,
-            charStrings,
-            group.styles,
-            options?.isolateKerningMeasurement !== false
-          );
-
-          // Apply kerning adjustments (negative = tighter, positive = looser)
-          for (const [charIndex, kerning] of kerningMap) {
-            const charSpan = group.chars[charIndex];
-            // Apply with sanity bound (< 20px in either direction)
-            if (charSpan && Math.abs(kerning) < 20) {
-              // Apply margin to the char span itself
-              // (or its mask wrapper parent if present)
-              const targetElement = options?.mask === "chars" && charSpan.parentElement
-                ? charSpan.parentElement
-                : charSpan;
-              targetElement.style.marginLeft = `${kerning}px`;
-            }
-          }
-        }
+    applyKerningCompensation(
+      element,
+      allWords,
+      charClass,
+      splitChars,
+      splitWords,
+      {
+        disableKerning: options?.disableKerning,
+        isolateKerningMeasurement: options?.isolateKerningMeasurement,
+        mask: options?.mask,
       }
-
-      // 2. Measure kerning across word boundaries (lastChar + space + firstChar)
-      for (let wordIdx = 1; wordIdx < allWords.length; wordIdx++) {
-        // Skip words that don't have a space before them (dash continuations)
-        if (
-          noSpaceBeforeSet.has(allWords[wordIdx]) ||
-          hardBreakBeforeSet.has(allWords[wordIdx])
-        ) {
-          continue;
-        }
-
-        const prevWord = allWords[wordIdx - 1];
-        const currWord = allWords[wordIdx];
-        const prevChars = Array.from(prevWord.querySelectorAll<HTMLSpanElement>(`.${charClass}`));
-        const currChars = Array.from(currWord.querySelectorAll<HTMLSpanElement>(`.${charClass}`));
-
-        if (prevChars.length === 0 || currChars.length === 0) continue;
-
-        const lastCharSpan = prevChars[prevChars.length - 1];
-        const firstCharSpan = currChars[0];
-        const lastChar = lastCharSpan.textContent || '';
-        const firstChar = firstCharSpan.textContent || '';
-        if (!lastChar || !firstChar) continue;
-
-        // Skip kerning for contextual scripts
-        if (hasContextualScript([lastChar, firstChar])) continue;
-
-        // Measure the full cross-word kerning: "lastChar + space + firstChar"
-        // Total kerning = width("X Y") - width("X") - width(" ") - width("Y")
-        const styles = getComputedStyle(firstCharSpan);
-        const kerningMap = measureKerning(
-          element,
-          firstCharSpan,
-          [lastChar, " ", firstChar],
-          styles,
-          options?.isolateKerningMeasurement !== false
-        );
-
-        // kerningMap will have kerning at index 1 (space) and index 2 (firstChar)
-        // We apply the sum to the first char of the next word
-        let totalKerning = 0;
-        if (kerningMap.has(1)) totalKerning += kerningMap.get(1)!;
-        if (kerningMap.has(2)) totalKerning += kerningMap.get(2)!;
-
-        if (Math.abs(totalKerning) > 0.001 && Math.abs(totalKerning) < 20) {
-          const targetElement = options?.mask === "chars" && firstCharSpan.parentElement
-            ? firstCharSpan.parentElement
-            : firstCharSpan;
-          targetElement.style.marginLeft = `${totalKerning}px`;
-        }
-      }
-    } else if (!options?.disableKerning && splitWords && allWords.length > 1) {
-      // Cross-word kerning for word-only splitting (no char spans)
-      // Apply margin to the word span itself
-      for (let wordIdx = 1; wordIdx < allWords.length; wordIdx++) {
-        if (
-          noSpaceBeforeSet.has(allWords[wordIdx]) ||
-          hardBreakBeforeSet.has(allWords[wordIdx])
-        ) {
-          continue;
-        }
-
-        const prevWord = allWords[wordIdx - 1];
-        const currWord = allWords[wordIdx];
-
-        const prevText = prevWord.textContent || '';
-        const currText = currWord.textContent || '';
-        if (!prevText || !currText) continue;
-
-        // Get last char of previous word and first char of current word
-        const lastChar = prevText[prevText.length - 1];
-        const firstChar = currText[0];
-
-        // Skip kerning for contextual scripts
-        if (hasContextualScript([lastChar, firstChar])) continue;
-
-        // Measure the full cross-word kerning
-        const styles = getComputedStyle(currWord);
-        const kerningMap = measureKerning(
-          element,
-          currWord,
-          [lastChar, " ", firstChar],
-          styles,
-          options?.isolateKerningMeasurement !== false
-        );
-
-        let totalKerning = 0;
-        if (kerningMap.has(1)) totalKerning += kerningMap.get(1)!;
-        if (kerningMap.has(2)) totalKerning += kerningMap.get(2)!;
-
-        if (Math.abs(totalKerning) > 0.001 && Math.abs(totalKerning) < 20) {
-          const targetElement = options?.mask === "words" && currWord.parentElement
-            ? currWord.parentElement
-            : currWord;
-          targetElement.style.marginLeft = `${totalKerning}px`;
-        }
-      }
-    }
+    );
 
     // Handle line grouping
     if (splitLines) {
@@ -2013,9 +2119,13 @@ export function splitText(
 
   // State management (closure-based)
   let isActive = true;
-  let resizeObserver: ResizeObserver | null = null;
-  let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+  let autoSplitObserver: ResizeObserver | null = null;
+  let autoSplitDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+  let kerningObserver: ResizeObserver | null = null;
+  let kerningAnimationFrame: number | null = null;
+  let removeKerningResizeListener: (() => void) | null = null;
   let lastWidth: number | null = null;
+  let lastKerningStyleKey: string | null = null;
 
   // Store current split result (needed for autoSplit)
   let currentChars: HTMLSpanElement[] = [];
@@ -2091,20 +2201,74 @@ export function splitText(
 
   applyDirectSplit();
 
+  const supportsKerningUpkeep = !disableKerning && (splitChars || splitWords);
+  const kerningOnlyUpdate = supportsKerningUpkeep && !splitLines;
+
+  if (supportsKerningUpkeep) {
+    lastKerningStyleKey = buildKerningStyleKey(getComputedStyle(element));
+  }
+
+  const getLineFingerprint = (lines: HTMLSpanElement[]): string => {
+    return lines.map((line) => line.textContent || "").join("\n");
+  };
+
+  const runFullResplit = () => {
+    if (!isActive) return;
+
+    const previousFingerprint = getLineFingerprint(currentLines);
+
+    element.innerHTML = originalHTML;
+
+    requestAnimationFrame(() => {
+      if (!isActive) return;
+      applyDirectSplit();
+
+      if (supportsKerningUpkeep) {
+        lastKerningStyleKey = buildKerningStyleKey(getComputedStyle(element));
+      }
+
+      const newFingerprint = getLineFingerprint(currentLines);
+      if (onResplit && newFingerprint !== previousFingerprint) {
+        onResplit({
+          chars: currentChars,
+          words: currentWords,
+          lines: currentLines,
+        });
+      }
+    });
+  };
+
   // Cleanup function to disconnect observers and timers
   const dispose = () => {
     if (!isActive) return;
 
-    // Disconnect observer
-    if (resizeObserver) {
-      resizeObserver.disconnect();
-      resizeObserver = null;
+    // Disconnect observers
+    if (autoSplitObserver) {
+      autoSplitObserver.disconnect();
+      autoSplitObserver = null;
+    }
+    if (kerningObserver) {
+      kerningObserver.disconnect();
+      kerningObserver = null;
     }
 
-    // Clear debounce timer
-    if (debounceTimer) {
-      clearTimeout(debounceTimer);
-      debounceTimer = null;
+    // Clear debounce timers
+    if (autoSplitDebounceTimer) {
+      clearTimeout(autoSplitDebounceTimer);
+      autoSplitDebounceTimer = null;
+    }
+    if (kerningAnimationFrame !== null) {
+      const ownerWindow = element.ownerDocument.defaultView;
+      if (ownerWindow) {
+        ownerWindow.cancelAnimationFrame(kerningAnimationFrame);
+      }
+      kerningAnimationFrame = null;
+    }
+
+    // Remove window listener
+    if (removeKerningResizeListener) {
+      removeKerningResizeListener();
+      removeKerningResizeListener = null;
     }
 
     isActive = false;
@@ -2135,6 +2299,80 @@ export function splitText(
     dispose();
   };
 
+  // Setup kerning upkeep monitor (independent of autoSplit)
+  if (supportsKerningUpkeep) {
+    const runKerningUpkeep = () => {
+      if (!isActive) return;
+      if (!element.isConnected) {
+        dispose();
+        return;
+      }
+
+      const nextKerningStyleKey = buildKerningStyleKey(getComputedStyle(element));
+      if (nextKerningStyleKey === lastKerningStyleKey) return;
+      lastKerningStyleKey = nextKerningStyleKey;
+
+      if (!kerningOnlyUpdate) {
+        runFullResplit();
+        return;
+      }
+
+      const wordsForKerning = querySplitWords(element, wordClass);
+      if (wordsForKerning.length === 0) return;
+
+      clearKerningCompensation(
+        wordsForKerning,
+        charClass,
+        splitChars,
+        splitWords,
+        mask
+      );
+      applyKerningCompensation(
+        element,
+        wordsForKerning,
+        charClass,
+        splitChars,
+        splitWords,
+        {
+          disableKerning,
+          isolateKerningMeasurement,
+          mask,
+        }
+      );
+    };
+
+    const scheduleKerningUpkeep = () => {
+      if (kerningAnimationFrame !== null) {
+        return;
+      }
+      const ownerWindow = element.ownerDocument.defaultView;
+      if (!ownerWindow) {
+        runKerningUpkeep();
+        return;
+      }
+      kerningAnimationFrame = ownerWindow.requestAnimationFrame(() => {
+        kerningAnimationFrame = null;
+        runKerningUpkeep();
+      });
+    };
+
+    kerningObserver = new ResizeObserver(() => {
+      scheduleKerningUpkeep();
+    });
+    kerningObserver.observe(element);
+
+    const ownerWindow = element.ownerDocument.defaultView;
+    if (ownerWindow) {
+      const handleWindowResize = () => {
+        scheduleKerningUpkeep();
+      };
+      ownerWindow.addEventListener("resize", handleWindowResize);
+      removeKerningResizeListener = () => {
+        ownerWindow.removeEventListener("resize", handleWindowResize);
+      };
+    }
+  }
+
   // Setup autoSplit if enabled
   if (autoSplit) {
     const target = element.parentElement;
@@ -2145,11 +2383,6 @@ export function splitText(
       );
     } else {
       let skipFirst = true;
-
-      // Helper to get line structure fingerprint (text content of each line)
-      const getLineFingerprint = (lines: HTMLSpanElement[]): string => {
-        return lines.map((line) => line.textContent || "").join("\n");
-      };
 
       const handleResize = () => {
         if (!isActive) return;
@@ -2163,43 +2396,22 @@ export function splitText(
         const currentWidth = target.offsetWidth;
         if (currentWidth === lastWidth) return;
         lastWidth = currentWidth;
-
-        // Capture current line structure before re-splitting
-        const previousFingerprint = getLineFingerprint(currentLines);
-
-        // Restore original HTML
-        element.innerHTML = originalHTML;
-
-        // Re-split after layout is complete
-        requestAnimationFrame(() => {
-          if (!isActive) return;
-          applyDirectSplit();
-
-          // Only trigger callback if lines actually changed
-          const newFingerprint = getLineFingerprint(currentLines);
-          if (onResplit && newFingerprint !== previousFingerprint) {
-            onResplit({
-              chars: currentChars,
-              words: currentWords,
-              lines: currentLines,
-            });
-          }
-        });
+        runFullResplit();
       };
 
-      resizeObserver = new ResizeObserver(() => {
+      autoSplitObserver = new ResizeObserver(() => {
         if (skipFirst) {
           skipFirst = false;
           return;
         }
 
-        if (debounceTimer) {
-          clearTimeout(debounceTimer);
+        if (autoSplitDebounceTimer) {
+          clearTimeout(autoSplitDebounceTimer);
         }
-        debounceTimer = setTimeout(handleResize, 200);
+        autoSplitDebounceTimer = setTimeout(handleResize, 200);
       });
 
-      resizeObserver.observe(target);
+      autoSplitObserver.observe(target);
       lastWidth = target.offsetWidth;
     }
   }
