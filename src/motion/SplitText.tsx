@@ -1113,7 +1113,7 @@ interface SplitTextProps<TCustom = unknown> extends WrapperMotionProps {
    * Still fires in variant mode for side effects.
    */
   onSplit?: (result: SplitTextElements) => CallbackReturn;
-  /** Called when autoSplit triggers a re-split on resize and line structure changes */
+  /** Called when autoSplit/full-resplit replaces split output elements */
   onResplit?: (result: SplitTextElements) => void;
   options?: SplitTextOptions;
   autoSplit?: boolean;
@@ -2360,7 +2360,7 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
         }
         resizeTimerRef.current = setTimeout(() => {
           measureAndSetData(true);
-        }, 200);
+        }, 100);
       };
 
       resizeObserverRef.current = new ResizeObserver(() => {

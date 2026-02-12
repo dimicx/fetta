@@ -126,7 +126,7 @@ describe("SplitText React Component", () => {
     await act(async () => {
       childElement!.style.fontSize = "32px";
       window.dispatchEvent(new Event("resize"));
-      await new Promise((resolve) => setTimeout(resolve, 260));
+      await new Promise((resolve) => setTimeout(resolve, 160));
     });
 
     const firstCharAfter = container.querySelector(".split-char");
@@ -134,9 +134,10 @@ describe("SplitText React Component", () => {
     expect(onResplit).not.toHaveBeenCalled();
   });
 
-  it("runs full resplit in line mode when typography style changes", async () => {
+  it("does not run full resplit in line mode when typography style changes and autoSplit is false", async () => {
+    const onResplit = vi.fn();
     const { container } = render(
-      <SplitText options={{ type: "chars,words,lines" }}>
+      <SplitText options={{ type: "chars,words,lines" }} onResplit={onResplit}>
         <p style={{ fontSize: "20px" }}>Hello World</p>
       </SplitText>
     );
@@ -153,13 +154,51 @@ describe("SplitText React Component", () => {
     await act(async () => {
       childElement!.style.fontSize = "32px";
       window.dispatchEvent(new Event("resize"));
-      await new Promise((resolve) => setTimeout(resolve, 260));
-      await new Promise((resolve) => setTimeout(resolve, 40));
+      await new Promise((resolve) => setTimeout(resolve, 160));
     });
 
     const firstLineAfter = container.querySelector(".split-line");
     expect(firstLineAfter).toBeTruthy();
+    expect(firstLineAfter).toBe(firstLineBefore);
+    expect(onResplit).not.toHaveBeenCalled();
+  });
+
+  it("runs full resplit in line mode when typography style changes and autoSplit is true", async () => {
+    const onResplit = vi.fn();
+    const { container } = render(
+      <SplitText autoSplit options={{ type: "chars,words,lines" }} onResplit={onResplit}>
+        <p style={{ fontSize: "20px" }}>Hello World</p>
+      </SplitText>
+    );
+
+    await waitFor(() => {
+      expect(container.querySelectorAll(".split-line").length).toBeGreaterThan(0);
+    });
+
+    const firstLineBefore = container.querySelector(".split-line");
+    const childElement = container.querySelector("p") as HTMLElement | null;
+    expect(firstLineBefore).toBeTruthy();
+    expect(childElement).toBeTruthy();
+
+    await act(async () => {
+      childElement!.style.fontSize = "32px";
+      window.dispatchEvent(new Event("resize"));
+      await new Promise((resolve) => setTimeout(resolve, 160));
+    });
+
+    await waitFor(() => {
+      expect(onResplit).toHaveBeenCalledTimes(1);
+    });
+
+    const lineFromCallback = onResplit.mock.calls[0]?.[0]?.lines?.[0] as
+      | HTMLElement
+      | undefined;
+    const firstLineAfter = container.querySelector(".split-line");
+
+    expect(firstLineAfter).toBeTruthy();
     expect(firstLineAfter).not.toBe(firstLineBefore);
+    expect(lineFromCallback).toBeTruthy();
+    expect(lineFromCallback).not.toBe(firstLineBefore);
   });
 
   it("waits for fonts by default before splitting", async () => {

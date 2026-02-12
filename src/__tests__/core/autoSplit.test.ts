@@ -46,7 +46,7 @@ describe("splitText resize behavior", () => {
     expect(observer?.elements.has(element)).toBe(true);
   });
 
-  it("debounces resize events with 200ms delay", () => {
+  it("debounces resize events with 100ms delay", () => {
     const element = document.createElement("p");
     element.textContent = "Hello World";
     parentElement.appendChild(element);
@@ -65,8 +65,8 @@ describe("splitText resize behavior", () => {
     // onResplit should not have been called yet (debounce pending)
     expect(onResplit).not.toHaveBeenCalled();
 
-    // Advance timers by 200ms
-    vi.advanceTimersByTime(200);
+    // Advance timers by 100ms
+    vi.advanceTimersByTime(100);
 
     // Need to run requestAnimationFrame callback
     vi.runAllTimers();
@@ -85,7 +85,7 @@ describe("splitText resize behavior", () => {
     // First trigger should be skipped
     observer!.trigger([{ contentRect: { width: 100 } }]);
 
-    vi.advanceTimersByTime(200);
+    vi.advanceTimersByTime(100);
     vi.runAllTimers();
 
     // Should not have called onResplit because first event is skipped
@@ -147,7 +147,7 @@ describe("splitText resize behavior", () => {
     // Second event with same width
     observer!.trigger([{ contentRect: { width: 500 } }]);
 
-    vi.advanceTimersByTime(200);
+    vi.advanceTimersByTime(100);
     vi.runAllTimers();
 
     // onResplit should not be called since width didn't change
@@ -177,7 +177,7 @@ describe("splitText resize behavior", () => {
     });
     observer!.trigger([{ contentRect: { width: 600 } }]);
 
-    vi.advanceTimersByTime(200);
+    vi.advanceTimersByTime(100);
     vi.runAllTimers();
 
     // onResplit should not be called since element is disconnected
@@ -204,7 +204,7 @@ describe("splitText resize behavior", () => {
 
     element.style.fontSize = "32px";
     window.dispatchEvent(new Event("resize"));
-    vi.advanceTimersByTime(200);
+    vi.advanceTimersByTime(100);
     vi.runAllTimers();
 
     const firstCharAfter = element.querySelector<HTMLSpanElement>(".split-char");
@@ -214,15 +214,17 @@ describe("splitText resize behavior", () => {
     expect(onResplit).not.toHaveBeenCalled();
   });
 
-  it("runs full resplit when style changes and lines are enabled", () => {
+  it("does not run full resplit when style changes in line mode and autoSplit is false", () => {
     const element = document.createElement("p");
     element.textContent = "Hello World";
     parentElement.appendChild(element);
     element.style.fontSize = "20px";
 
+    const onResplit = vi.fn();
     splitText(element, {
       autoSplit: false,
       type: "chars,words,lines",
+      onResplit,
     });
 
     const firstLineBefore = element.querySelector<HTMLSpanElement>(".split-line");
@@ -230,12 +232,78 @@ describe("splitText resize behavior", () => {
 
     element.style.fontSize = "32px";
     window.dispatchEvent(new Event("resize"));
-    vi.advanceTimersByTime(200);
+    vi.advanceTimersByTime(100);
+    vi.runAllTimers();
+
+    const firstLineAfter = element.querySelector<HTMLSpanElement>(".split-line");
+    expect(firstLineAfter).toBeTruthy();
+    expect(firstLineAfter).toBe(firstLineBefore);
+    expect(onResplit).not.toHaveBeenCalled();
+  });
+
+  it("runs full resplit when style changes in line mode and autoSplit is true", () => {
+    const element = document.createElement("p");
+    element.textContent = "Hello World";
+    parentElement.appendChild(element);
+    element.style.fontSize = "20px";
+
+    const onResplit = vi.fn();
+    splitText(element, {
+      autoSplit: true,
+      type: "chars,words,lines",
+      onResplit,
+    });
+
+    const firstLineBefore = element.querySelector<HTMLSpanElement>(".split-line");
+    expect(firstLineBefore).toBeTruthy();
+
+    element.style.fontSize = "32px";
+    window.dispatchEvent(new Event("resize"));
+    vi.advanceTimersByTime(100);
     vi.runAllTimers();
 
     const firstLineAfter = element.querySelector<HTMLSpanElement>(".split-line");
     expect(firstLineAfter).toBeTruthy();
     expect(firstLineAfter).not.toBe(firstLineBefore);
+    expect(onResplit).toHaveBeenCalledTimes(1);
+  });
+
+  it("fires onResplit on full resplit even when line grouping is unchanged", () => {
+    const element = document.createElement("p");
+    element.textContent = "Hi";
+    parentElement.appendChild(element);
+
+    Object.defineProperty(parentElement, "offsetWidth", {
+      value: 320,
+      writable: true,
+    });
+
+    const onResplit = vi.fn();
+    splitText(element, {
+      autoSplit: true,
+      type: "chars,words,lines",
+      onResplit,
+    });
+
+    const observer = getLastResizeObserver();
+    expect(observer).not.toBeNull();
+
+    // Skip first observer callback by design.
+    observer!.trigger([{ contentRect: { width: 320 } }]);
+
+    // Trigger actual resize with different width while keeping the same one-line content.
+    Object.defineProperty(parentElement, "offsetWidth", {
+      value: 420,
+      writable: true,
+    });
+    observer!.trigger([{ contentRect: { width: 420 } }]);
+
+    vi.advanceTimersByTime(100);
+    vi.runAllTimers();
+
+    expect(onResplit).toHaveBeenCalledTimes(1);
+    const result = onResplit.mock.calls[0]?.[0];
+    expect(result?.lines?.[0]?.textContent).toBe("Hi");
   });
 
   it("does not resplit when style key is unchanged", () => {
@@ -250,7 +318,7 @@ describe("splitText resize behavior", () => {
 
     const firstCharBefore = result.chars[0];
     window.dispatchEvent(new Event("resize"));
-    vi.advanceTimersByTime(200);
+    vi.advanceTimersByTime(100);
     vi.runAllTimers();
 
     const firstCharAfter = element.querySelector<HTMLSpanElement>(".split-char");

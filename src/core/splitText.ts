@@ -43,7 +43,7 @@ export interface SplitTextOptions {
   mask?: "lines" | "words" | "chars";
   /** Auto-split on resize (observes parent element) */
   autoSplit?: boolean;
-  /** Callback when resize triggers a re-split that changes line structure (does not re-trigger initial animations) */
+  /** Callback when autoSplit/full-resplit replaces split output elements */
   onResplit?: (result: Omit<SplitTextResult, "revert" | "dispose">) => void;
   /** Callback fired after text is split, receives split elements. Return animation for revertOnComplete. */
   onSplit?: (result: {
@@ -2208,34 +2208,33 @@ export function splitText(
     lastKerningStyleKey = buildKerningStyleKey(getComputedStyle(element));
   }
 
-  const getLineFingerprint = (lines: HTMLSpanElement[]): string => {
-    return lines.map((line) => line.textContent || "").join("\n");
-  };
-
   const runFullResplit = () => {
     if (!isActive) return;
 
-    const previousFingerprint = getLineFingerprint(currentLines);
+    const previousChars = currentChars;
+    const previousWords = currentWords;
+    const previousLines = currentLines;
 
     element.innerHTML = originalHTML;
 
-    requestAnimationFrame(() => {
-      if (!isActive) return;
-      applyDirectSplit();
+    applyDirectSplit();
 
-      if (supportsKerningUpkeep) {
-        lastKerningStyleKey = buildKerningStyleKey(getComputedStyle(element));
-      }
+    if (supportsKerningUpkeep) {
+      lastKerningStyleKey = buildKerningStyleKey(getComputedStyle(element));
+    }
 
-      const newFingerprint = getLineFingerprint(currentLines);
-      if (onResplit && newFingerprint !== previousFingerprint) {
-        onResplit({
-          chars: currentChars,
-          words: currentWords,
-          lines: currentLines,
-        });
-      }
-    });
+    const replacedSplitOutput =
+      previousChars !== currentChars ||
+      previousWords !== currentWords ||
+      previousLines !== currentLines;
+
+    if (onResplit && replacedSplitOutput) {
+      onResplit({
+        chars: currentChars,
+        words: currentWords,
+        lines: currentLines,
+      });
+    }
   };
 
   // Cleanup function to disconnect observers and timers
@@ -2299,7 +2298,8 @@ export function splitText(
     dispose();
   };
 
-  // Setup kerning upkeep monitor (independent of autoSplit)
+  // Setup kerning upkeep monitor.
+  // For line mode, full re-splits triggered by typography style changes are autoSplit-gated.
   if (supportsKerningUpkeep) {
     const runKerningUpkeep = () => {
       if (!isActive) return;
@@ -2312,7 +2312,11 @@ export function splitText(
       if (nextKerningStyleKey === lastKerningStyleKey) return;
       lastKerningStyleKey = nextKerningStyleKey;
 
+      // In line mode, typography style-triggered full re-splits are autoSplit-only.
       if (!kerningOnlyUpdate) {
+        if (!autoSplit) {
+          return;
+        }
         runFullResplit();
         return;
       }
@@ -2408,7 +2412,7 @@ export function splitText(
         if (autoSplitDebounceTimer) {
           clearTimeout(autoSplitDebounceTimer);
         }
-        autoSplitDebounceTimer = setTimeout(handleResize, 200);
+        autoSplitDebounceTimer = setTimeout(handleResize, 100);
       });
 
       autoSplitObserver.observe(target);

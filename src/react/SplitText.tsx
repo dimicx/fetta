@@ -121,7 +121,7 @@ interface SplitTextProps extends WrapperHTMLProps {
    * Return an animation or promise to enable revert (requires revertOnComplete).
    */
   onSplit?: (result: SplitTextElements) => CallbackReturn;
-  /** Called when autoSplit triggers a re-split on resize and line structure changes */
+  /** Called when autoSplit/full-resplit replaces split output elements */
   onResplit?: (result: SplitTextElements) => void;
   options?: SplitTextOptions;
   autoSplit?: boolean;
