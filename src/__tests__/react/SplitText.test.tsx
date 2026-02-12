@@ -201,6 +201,49 @@ describe("SplitText React Component", () => {
     expect(lineFromCallback).not.toBe(firstLineBefore);
   });
 
+  it("skips width-driven full resplit when line grouping is unchanged", async () => {
+    const onResplit = vi.fn();
+    const { container } = render(
+      <SplitText autoSplit options={{ type: "chars,words,lines" }} onResplit={onResplit}>
+        <p>Hi</p>
+      </SplitText>
+    );
+
+    await waitFor(() => {
+      expect(container.querySelectorAll(".split-line").length).toBe(1);
+    });
+
+    const firstLineBefore = container.querySelector(".split-line");
+    expect(firstLineBefore).toBeTruthy();
+
+    const observer = getLastResizeObserver();
+    expect(observer).not.toBeNull();
+    const target = observer ? Array.from(observer.elements)[0] : null;
+    expect(target instanceof HTMLElement).toBe(true);
+
+    Object.defineProperty(target as HTMLElement, "offsetWidth", {
+      value: 320,
+      writable: true,
+      configurable: true,
+    });
+    observer!.trigger([{ contentRect: { width: 320 } }]);
+
+    Object.defineProperty(target as HTMLElement, "offsetWidth", {
+      value: 420,
+      writable: true,
+      configurable: true,
+    });
+    observer!.trigger([{ contentRect: { width: 420 } }]);
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 160));
+    });
+
+    const firstLineAfter = container.querySelector(".split-line");
+    expect(firstLineAfter).toBe(firstLineBefore);
+    expect(onResplit).not.toHaveBeenCalled();
+  });
+
   it("waits for fonts by default before splitting", async () => {
     let resolveFonts: () => void = () => {};
     const fontsReady = new Promise<void>((resolve) => {

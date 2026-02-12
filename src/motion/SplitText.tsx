@@ -4,6 +4,12 @@ import {
   reapplyInitialStyles,
   reapplyInitialClasses,
 } from "../internal/initialStyles";
+import {
+  applyKerningCompensation,
+  buildKerningStyleKey,
+  clearKerningCompensation,
+  querySplitWords,
+} from "../internal/kerningUpkeep";
 import type { InitialStyles, InitialClasses } from "../internal/initialStyles";
 import { waitForFontsReady } from "../internal/waitForFontsReady";
 import { animate, scroll } from "motion";
@@ -1334,6 +1340,54 @@ function collectSplitElements(
   return { chars, words, lines, revert: () => {} };
 }
 
+function resolveSplitFlags(type: SplitTextOptions["type"] | undefined): {
+  splitChars: boolean;
+  splitWords: boolean;
+  splitLines: boolean;
+} {
+  const resolvedType = type ?? "chars,words,lines";
+  let splitChars = resolvedType.includes("chars");
+  let splitWords = resolvedType.includes("words");
+  let splitLines = resolvedType.includes("lines");
+
+  if (!splitChars && !splitWords && !splitLines) {
+    splitChars = true;
+    splitWords = true;
+    splitLines = true;
+  }
+
+  return { splitChars, splitWords, splitLines };
+}
+
+function normalizeLineFingerprintText(value: string): string {
+  return value.replace(/\u00A0/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function collectNodeText(node: SplitTextDataNode): string {
+  if (node.type === "text") return node.text;
+  return node.children.map((child) => collectNodeText(child)).join("");
+}
+
+function collectLineTextsFromData(
+  nodes: SplitTextDataNode[],
+  lineTexts: string[]
+): void {
+  for (const node of nodes) {
+    if (node.type !== "element") continue;
+    if (node.split === "line") {
+      lineTexts.push(normalizeLineFingerprintText(collectNodeText(node)));
+      continue;
+    }
+    collectLineTextsFromData(node.children, lineTexts);
+  }
+}
+
+function buildLineFingerprintFromData(data: SplitTextData): string {
+  const lineTexts: string[] = [];
+  collectLineTextsFromData(data.nodes, lineTexts);
+  return lineTexts.join("\n");
+}
+
 function buildSplitDataLayout(data: SplitTextData): SplitDataLayout {
   const relations = collectRelations(data.nodes);
   const maps = buildIndexMaps(relations);
@@ -1671,9 +1725,14 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
     const hasTriggeredOnceRef = useRef(false);
     const resizeObserverRef = useRef<ResizeObserver | null>(null);
     const resizeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const lineFingerprintRef = useRef<string | null>(null);
+    const kerningResizeObserverRef = useRef<ResizeObserver | null>(null);
+    const kerningAnimationFrameRef = useRef<number | null>(null);
+    const removeWindowResizeListenerRef = useRef<(() => void) | null>(null);
+    const lastKerningStyleKeyRef = useRef<string | null>(null);
+    const currentLineFingerprintRef = useRef<string | null>(null);
+    const pendingFullResplitRef = useRef(false);
+    const hasRunOnSplitForCycleRef = useRef(false);
     const originalHTMLRef = useRef<string | null>(null);
-    const pendingResizeRef = useRef(false);
 
     useLayoutEffect(() => {
       const element = containerRef.current?.firstElementChild;
@@ -1697,8 +1756,10 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
       hasSplitRef.current = false;
       hasRevertedRef.current = false;
       originalHTMLRef.current = null;
-      lineFingerprintRef.current = null;
-      pendingResizeRef.current = false;
+      pendingFullResplitRef.current = false;
+      hasRunOnSplitForCycleRef.current = false;
+      lastKerningStyleKeyRef.current = null;
+      currentLineFingerprintRef.current = null;
       setData(null);
       setIsReady(false);
       lastSignatureRef.current = nextSignature;
@@ -1772,7 +1833,14 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
 
     const measureAndSetData = useCallback(
       (isResize = false) => {
-        if (!childElement) return;
+        const currentChild =
+          childElement && childElement.isConnected
+            ? childElement
+            : (() => {
+                const element = containerRef.current?.firstElementChild;
+                return element instanceof HTMLElement ? element : null;
+              })();
+        if (!currentChild) return;
 
         // splitTextData mutates element contents for measurement and restores via
         // innerHTML, which replaces DOM nodes. Bump a key so React remounts the
@@ -1780,14 +1848,16 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
         setChildTreeVersion((current) => current + 1);
 
         const originalHTML =
-          originalHTMLRef.current ?? childElement.innerHTML;
+          originalHTMLRef.current ?? currentChild.innerHTML;
         originalHTMLRef.current = originalHTML;
 
-        childElement.innerHTML = originalHTML;
-        setIsReady(false);
-        pendingResizeRef.current = isResize;
+        currentChild.innerHTML = originalHTML;
+        // Keep content visible after first split to avoid a flash during resplits.
+        if (!isResize) {
+          setIsReady(false);
+        }
 
-        const nextData = splitTextData(childElement, {
+        const nextData = splitTextData(currentChild, {
           ...optionsRef.current,
           initialStyles: initialStylesRef.current,
           initialClasses: initialClassesRef.current,
@@ -1797,6 +1867,46 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
       },
       [childElement]
     );
+
+    const measureLineFingerprintForWidth = useCallback((width: number) => {
+      const currentChild =
+        childElement && childElement.isConnected
+          ? childElement
+          : (() => {
+              const element = containerRef.current?.firstElementChild;
+              return element instanceof HTMLElement ? element : null;
+            })();
+      if (!currentChild) return null;
+      if (!currentChild.parentElement) return null;
+
+      const originalHTML =
+        originalHTMLRef.current ?? currentChild.innerHTML;
+      const probeHost = currentChild.ownerDocument.createElement("div");
+      probeHost.setAttribute("data-fetta-auto-split-probe", "true");
+      probeHost.style.position = "fixed";
+      probeHost.style.left = "-99999px";
+      probeHost.style.top = "0";
+      probeHost.style.visibility = "hidden";
+      probeHost.style.pointerEvents = "none";
+      probeHost.style.contain = "layout style paint";
+      probeHost.style.width = `${Math.max(1, width)}px`;
+
+      const probeElement = currentChild.cloneNode(false) as HTMLElement;
+      probeElement.innerHTML = originalHTML;
+      probeHost.appendChild(probeElement);
+      currentChild.parentElement.appendChild(probeHost);
+
+      try {
+        const probeData = splitTextData(probeElement, {
+          ...optionsRef.current,
+          initialStyles: initialStylesRef.current,
+          initialClasses: initialClassesRef.current,
+        });
+        return buildLineFingerprintFromData(probeData);
+      } finally {
+        probeHost.remove();
+      }
+    }, [childElement]);
 
     // Initial split
     useEffect(() => {
@@ -1822,6 +1932,17 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
       () => (data ? buildSplitDataLayout(data) : null),
       [data]
     );
+
+    useEffect(() => {
+      if (!data) {
+        currentLineFingerprintRef.current = null;
+        return;
+      }
+      const { splitLines } = resolveSplitFlags(optionsRef.current?.type);
+      currentLineFingerprintRef.current = splitLines
+        ? buildLineFingerprintFromData(data)
+        : null;
+    }, [data]);
 
     // Build VariantInfo arrays for function variants
     const variantInfo = useMemo(
@@ -2219,11 +2340,8 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
 
       splitResultRef.current = { ...splitElements, revert };
 
-      const fingerprint = splitElements.lines
-        .map((line) => line.textContent || "")
-        .join("\n");
-      if (pendingResizeRef.current && onResplitRef.current) {
-        if (lineFingerprintRef.current !== fingerprint) {
+      if (pendingFullResplitRef.current) {
+        if (onResplitRef.current) {
           onResplitRef.current({
             chars: splitElements.chars,
             words: splitElements.words,
@@ -2231,13 +2349,13 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
             revert,
           });
         }
-        pendingResizeRef.current = false;
+        pendingFullResplitRef.current = false;
       }
-      lineFingerprintRef.current = fingerprint;
 
       setIsReady(true);
 
-      if (onSplitRef.current) {
+      if (!hasRunOnSplitForCycleRef.current && onSplitRef.current) {
+        hasRunOnSplitForCycleRef.current = true;
         const callbackResult = onSplitRef.current(splitResultRef.current);
         const shouldRevert =
           !hasVariants && !needsViewport && revertOnCompleteRef.current;
@@ -2262,6 +2380,115 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
 
       return undefined;
     }, [data, childElement, needsViewport, hasVariants, splitDataLayout]);
+
+    useEffect(() => {
+      if (!data) return;
+
+      const observedElement = containerRef.current?.firstElementChild;
+      if (!(observedElement instanceof HTMLElement)) return;
+
+      const { splitChars, splitWords, splitLines } = resolveSplitFlags(
+        optionsRef.current?.type
+      );
+      const supportsKerningUpkeep =
+        !optionsRef.current?.disableKerning && (splitChars || splitWords);
+      if (!supportsKerningUpkeep) return;
+
+      const ownerWindow = observedElement.ownerDocument.defaultView;
+      const wordClass = optionsRef.current?.wordClass ?? "split-word";
+      const charClass = optionsRef.current?.charClass ?? "split-char";
+      const mask = optionsRef.current?.mask;
+      const isolateKerningMeasurement =
+        optionsRef.current?.isolateKerningMeasurement;
+      const readKerningStyleSnapshot = (element: HTMLElement) =>
+        `${buildKerningStyleKey(getComputedStyle(element))}|${
+          element.getAttribute("style") ?? ""
+        }`;
+
+      lastKerningStyleKeyRef.current = readKerningStyleSnapshot(observedElement);
+
+      const runKerningUpkeep = () => {
+        const currentElement = containerRef.current?.firstElementChild;
+        if (!(currentElement instanceof HTMLElement)) return;
+        if (!currentElement.isConnected) return;
+
+        const nextKerningStyleKey = readKerningStyleSnapshot(currentElement);
+        if (nextKerningStyleKey === lastKerningStyleKeyRef.current) return;
+        lastKerningStyleKeyRef.current = nextKerningStyleKey;
+
+        if (splitLines) {
+          if (!autoSplit || pendingFullResplitRef.current) return;
+          pendingFullResplitRef.current = true;
+          measureAndSetData(true);
+          return;
+        }
+
+        const wordsForKerning = querySplitWords(currentElement, wordClass);
+        if (wordsForKerning.length === 0) return;
+
+        clearKerningCompensation(
+          wordsForKerning,
+          charClass,
+          splitChars,
+          splitWords,
+          mask
+        );
+
+        applyKerningCompensation(
+          currentElement,
+          wordsForKerning,
+          charClass,
+          splitChars,
+          splitWords,
+          {
+            disableKerning: optionsRef.current?.disableKerning,
+            isolateKerningMeasurement,
+            mask,
+          }
+        );
+      };
+
+      const scheduleKerningUpkeep = () => {
+        if (kerningAnimationFrameRef.current !== null) return;
+        if (!ownerWindow) {
+          runKerningUpkeep();
+          return;
+        }
+        kerningAnimationFrameRef.current = ownerWindow.requestAnimationFrame(
+          () => {
+            kerningAnimationFrameRef.current = null;
+            runKerningUpkeep();
+          }
+        );
+      };
+
+      kerningResizeObserverRef.current = new ResizeObserver(() => {
+        scheduleKerningUpkeep();
+      });
+      kerningResizeObserverRef.current.observe(observedElement);
+
+      if (ownerWindow) {
+        ownerWindow.addEventListener("resize", scheduleKerningUpkeep);
+        removeWindowResizeListenerRef.current = () => {
+          ownerWindow.removeEventListener("resize", scheduleKerningUpkeep);
+        };
+      }
+
+      return () => {
+        if (kerningResizeObserverRef.current) {
+          kerningResizeObserverRef.current.disconnect();
+          kerningResizeObserverRef.current = null;
+        }
+        if (kerningAnimationFrameRef.current !== null && ownerWindow) {
+          ownerWindow.cancelAnimationFrame(kerningAnimationFrameRef.current);
+          kerningAnimationFrameRef.current = null;
+        }
+        if (removeWindowResizeListenerRef.current) {
+          removeWindowResizeListenerRef.current();
+          removeWindowResizeListenerRef.current = null;
+        }
+      };
+    }, [autoSplit, childTreeVersion, data, measureAndSetData]);
 
     useEffect(() => {
       if (!needsViewport) {
@@ -2343,22 +2570,50 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
 
     useEffect(() => {
       if (!autoSplit || !containerRef.current) return;
+      if (!data) return;
 
       let skipFirst = true;
-      const target = containerRef.current;
+      let target: HTMLElement = containerRef.current;
+      if (
+        target.dataset.fettaAutoSplitWrapper === "true" &&
+        target.parentElement instanceof HTMLElement
+      ) {
+        target = target.parentElement;
+      }
+      const observedChild = containerRef.current.firstElementChild;
+      if (
+        target.parentElement instanceof HTMLElement &&
+        observedChild instanceof HTMLElement
+      ) {
+        const targetWidth = target.getBoundingClientRect().width;
+        const childWidth = observedChild.getBoundingClientRect().width;
+        if (Math.abs(targetWidth - childWidth) < 0.5) {
+          target = target.parentElement;
+        }
+      }
       let lastWidth: number | null = null;
+      const { splitLines } = resolveSplitFlags(optionsRef.current?.type);
 
       const handleResize = () => {
-        if (!childElement || !data) return;
-
         const currentWidth = target.offsetWidth;
         if (currentWidth === lastWidth) return;
         lastWidth = currentWidth;
+
+        if (splitLines && currentLineFingerprintRef.current !== null) {
+          const nextFingerprint = measureLineFingerprintForWidth(currentWidth);
+          if (
+            nextFingerprint !== null &&
+            nextFingerprint === currentLineFingerprintRef.current
+          ) {
+            return;
+          }
+        }
 
         if (resizeTimerRef.current) {
           clearTimeout(resizeTimerRef.current);
         }
         resizeTimerRef.current = setTimeout(() => {
+          pendingFullResplitRef.current = true;
           measureAndSetData(true);
         }, 100);
       };
@@ -2384,7 +2639,7 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
           resizeTimerRef.current = null;
         }
       };
-    }, [autoSplit, childElement, data, measureAndSetData]);
+    }, [autoSplit, data, measureAndSetData, measureLineFingerprintForWidth]);
 
     useEffect(() => {
       if (!splitResultRef.current) return;
@@ -2655,6 +2910,7 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
       Wrapper,
       {
         ref: mergedRef,
+        "data-fetta-auto-split-wrapper": "true",
         ...passthroughWrapperProps,
         className,
         style: {

@@ -480,6 +480,7 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
       Wrapper,
       {
         ref: mergedRef,
+        "data-fetta-auto-split-wrapper": "true",
         ...wrapperProps,
         className,
         style: {

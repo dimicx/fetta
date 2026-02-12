@@ -468,7 +468,7 @@ describe("SplitText viewport (motion)", () => {
     });
   });
 
-  it("re-runs onSplit effect when variants are added after initial split", async () => {
+  it("does not re-run onSplit when variants are added after initial split", async () => {
     const onSplit = vi.fn();
 
     const { rerender } = render(
@@ -493,9 +493,11 @@ describe("SplitText viewport (motion)", () => {
       </SplitText>
     );
 
-    await waitFor(() => {
-      expect(onSplit.mock.calls.length).toBeGreaterThan(baselineCalls);
+    await act(async () => {
+      await Promise.resolve();
     });
+
+    expect(onSplit.mock.calls.length).toBe(baselineCalls);
   });
 
   it("re-runs viewport leave effect with latest hasVariants value", async () => {

@@ -30,11 +30,13 @@ export class MockResizeObserver {
 
 // Store the last created observer for test access
 let lastResizeObserver: MockResizeObserver | null = null;
+let resizeObservers: MockResizeObserver[] = [];
 
 vi.stubGlobal(
   "ResizeObserver",
   vi.fn((callback: ResizeObserverCallback) => {
     lastResizeObserver = new MockResizeObserver(callback);
+    resizeObservers.push(lastResizeObserver);
     return lastResizeObserver;
   })
 );
@@ -43,8 +45,13 @@ export function getLastResizeObserver(): MockResizeObserver | null {
   return lastResizeObserver;
 }
 
+export function getResizeObservers(): MockResizeObserver[] {
+  return [...resizeObservers];
+}
+
 export function resetResizeObserver() {
   lastResizeObserver = null;
+  resizeObservers = [];
 }
 
 // Mock IntersectionObserver
