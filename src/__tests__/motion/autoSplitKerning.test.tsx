@@ -335,4 +335,69 @@ describe("SplitText motion autoSplit kerning parity", () => {
       expect(scrollMock.mock.calls.length).toBeGreaterThan(scrollCallsBefore);
     });
   });
+
+  it("keeps callback-mode scroll runtime active across line full-resplits", async () => {
+    const motion = await import("motion");
+    const animateMock = motion.animate as unknown as ReturnType<typeof vi.fn>;
+    const scrollMock = motion.scroll as unknown as ReturnType<typeof vi.fn>;
+    animateMock.mockClear();
+    scrollMock.mockClear();
+
+    const setupScrollRuntime = vi.fn(({ chars }: { chars: HTMLSpanElement[] }) => {
+      const animation = motion.animate(
+        chars.map((char, i) => [
+          char,
+          { opacity: 1 },
+          { duration: 0.3, at: i * 0.025, ease: "linear" },
+        ])
+      );
+      if (
+        animation &&
+        typeof animation === "object" &&
+        "pause" in animation &&
+        typeof (animation as { pause?: unknown }).pause === "function"
+      ) {
+        (animation as { pause: () => void }).pause();
+      }
+      motion.scroll(animation, {
+        offset: ["start 90%", "start 10%"],
+      });
+    });
+
+    const { container } = render(
+      <SplitText
+        autoSplit
+        options={{ type: "chars,lines" }}
+        initialStyles={{ chars: { opacity: 0.2 } }}
+        onSplit={setupScrollRuntime}
+        onResplit={setupScrollRuntime}
+      >
+        <p style={{ fontSize: "20px" }}>
+          Smoothly fade in each character as you scroll through this container
+        </p>
+      </SplitText>
+    );
+
+    await waitFor(() => {
+      expect(setupScrollRuntime).toHaveBeenCalledTimes(1);
+      expect(animateMock).toHaveBeenCalled();
+      expect(scrollMock).toHaveBeenCalled();
+    });
+
+    const setupCallsBefore = setupScrollRuntime.mock.calls.length;
+    const animateCallsBefore = animateMock.mock.calls.length;
+    const scrollCallsBefore = scrollMock.mock.calls.length;
+    const childElement = container.querySelector("p") as HTMLElement | null;
+    expect(childElement).toBeTruthy();
+
+    await triggerTypographyResize(childElement!, "32px");
+
+    await waitFor(() => {
+      expect(setupScrollRuntime.mock.calls.length).toBeGreaterThan(
+        setupCallsBefore
+      );
+      expect(animateMock.mock.calls.length).toBeGreaterThan(animateCallsBefore);
+      expect(scrollMock.mock.calls.length).toBeGreaterThan(scrollCallsBefore);
+    });
+  });
 });

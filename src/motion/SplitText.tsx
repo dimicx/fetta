@@ -21,6 +21,7 @@ import type {
   SequenceTime,
 } from "motion";
 import type { HTMLMotionProps } from "motion/react";
+import { flushSync } from "react-dom";
 import {
   cloneElement,
   createElement,
@@ -1731,6 +1732,7 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
     const lastKerningStyleKeyRef = useRef<string | null>(null);
     const currentLineFingerprintRef = useRef<string | null>(null);
     const pendingFullResplitRef = useRef(false);
+    const splitResultVersionRef = useRef<number>(-1);
     const hasRunOnSplitForCycleRef = useRef(false);
     const originalHTMLRef = useRef<string | null>(null);
 
@@ -1757,6 +1759,7 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
       hasRevertedRef.current = false;
       originalHTMLRef.current = null;
       pendingFullResplitRef.current = false;
+      splitResultVersionRef.current = -1;
       hasRunOnSplitForCycleRef.current = false;
       lastKerningStyleKeyRef.current = null;
       currentLineFingerprintRef.current = null;
@@ -1831,44 +1834,7 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
       observerRef.current.observe(container);
     }
 
-    const measureAndSetData = useCallback(
-      (isResize = false) => {
-        const currentChild =
-          childElement && childElement.isConnected
-            ? childElement
-            : (() => {
-                const element = containerRef.current?.firstElementChild;
-                return element instanceof HTMLElement ? element : null;
-              })();
-        if (!currentChild) return;
-
-        // splitTextData mutates element contents for measurement and restores via
-        // innerHTML, which replaces DOM nodes. Bump a key so React remounts the
-        // child subtree instead of reconciling against stale node references.
-        setChildTreeVersion((current) => current + 1);
-
-        const originalHTML =
-          originalHTMLRef.current ?? currentChild.innerHTML;
-        originalHTMLRef.current = originalHTML;
-
-        currentChild.innerHTML = originalHTML;
-        // Keep content visible after first split to avoid a flash during resplits.
-        if (!isResize) {
-          setIsReady(false);
-        }
-
-        const nextData = splitTextData(currentChild, {
-          ...optionsRef.current,
-          initialStyles: initialStylesRef.current,
-          initialClasses: initialClassesRef.current,
-        });
-
-        setData(nextData);
-      },
-      [childElement]
-    );
-
-    const measureLineFingerprintForWidth = useCallback((width: number) => {
+    const buildSplitDataFromProbe = useCallback((width?: number) => {
       const currentChild =
         childElement && childElement.isConnected
           ? childElement
@@ -1881,6 +1847,7 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
 
       const originalHTML =
         originalHTMLRef.current ?? currentChild.innerHTML;
+      originalHTMLRef.current = originalHTML;
       const probeHost = currentChild.ownerDocument.createElement("div");
       probeHost.setAttribute("data-fetta-auto-split-probe", "true");
       probeHost.style.position = "fixed";
@@ -1889,7 +1856,10 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
       probeHost.style.visibility = "hidden";
       probeHost.style.pointerEvents = "none";
       probeHost.style.contain = "layout style paint";
-      probeHost.style.width = `${Math.max(1, width)}px`;
+      const measuredWidth =
+        width ??
+        currentChild.getBoundingClientRect().width;
+      probeHost.style.width = `${Math.max(1, measuredWidth)}px`;
 
       const probeElement = currentChild.cloneNode(false) as HTMLElement;
       probeElement.innerHTML = originalHTML;
@@ -1902,11 +1872,39 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
           initialStyles: initialStylesRef.current,
           initialClasses: initialClassesRef.current,
         });
-        return buildLineFingerprintFromData(probeData);
+        return probeData;
       } finally {
         probeHost.remove();
       }
     }, [childElement]);
+
+    const measureAndSetData = useCallback(
+      (isResize = false, width?: number) => {
+        // splitTextData mutates the measured node via innerHTML restore semantics.
+        // Measure in an offscreen probe to avoid exposing an intermediate raw-text
+        // frame in the live subtree during responsive/full resplits.
+        const nextData = buildSplitDataFromProbe(width);
+        if (!nextData) return;
+
+        // Bump a key so React remounts the split subtree instead of reconciling
+        // against stale node references captured by callbacks.
+        flushSync(() => {
+          setChildTreeVersion((current) => current + 1);
+          // Keep content visible after first split to avoid a flash during resplits.
+          if (!isResize) {
+            setIsReady(false);
+          }
+          setData(nextData);
+        });
+      },
+      [buildSplitDataFromProbe]
+    );
+
+    const measureLineFingerprintForWidth = useCallback((width: number) => {
+      const probeData = buildSplitDataFromProbe(width);
+      if (!probeData) return null;
+      return buildLineFingerprintFromData(probeData);
+    }, [buildSplitDataFromProbe]);
 
     // Initial split
     useEffect(() => {
@@ -2305,8 +2303,10 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
 
     useEffect(() => {
       if (!data || !childElement) return;
+      const liveChildElement = containerRef.current?.firstElementChild;
+      if (!(liveChildElement instanceof HTMLElement)) return;
 
-      const splitElements = collectSplitElements(childElement, optionsRef.current);
+      const splitElements = collectSplitElements(liveChildElement, optionsRef.current);
       const expectedCounts = splitDataLayout?.relations.counts ?? {
         chars: 0,
         words: 0,
@@ -2339,6 +2339,7 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
       };
 
       splitResultRef.current = { ...splitElements, revert };
+      splitResultVersionRef.current = childTreeVersion;
 
       if (pendingFullResplitRef.current) {
         if (onResplitRef.current) {
@@ -2352,6 +2353,10 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
         pendingFullResplitRef.current = false;
       }
 
+      // Match core/react callback ordering: reveal before runtime wiring callbacks.
+      if (waitForFonts && containerRef.current) {
+        containerRef.current.style.visibility = "visible";
+      }
       setIsReady(true);
 
       if (!hasRunOnSplitForCycleRef.current && onSplitRef.current) {
@@ -2379,7 +2384,7 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
       }
 
       return undefined;
-    }, [data, childElement, needsViewport, hasVariants, splitDataLayout]);
+    }, [data, childElement, needsViewport, hasVariants, splitDataLayout, childTreeVersion]);
 
     useEffect(() => {
       if (!data) return;
@@ -2418,8 +2423,37 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
 
         if (splitLines) {
           if (!autoSplit || pendingFullResplitRef.current) return;
+          // Typography-driven line changes should not wait behind width debounce.
+          if (resizeTimerRef.current) {
+            clearTimeout(resizeTimerRef.current);
+            resizeTimerRef.current = null;
+          }
           pendingFullResplitRef.current = true;
-          measureAndSetData(true);
+          let resplitWidth: number | undefined;
+          const wrapper = containerRef.current;
+          if (wrapper instanceof HTMLElement) {
+            let target: HTMLElement = wrapper;
+            if (
+              target.dataset.fettaAutoSplitWrapper === "true" &&
+              target.parentElement instanceof HTMLElement
+            ) {
+              target = target.parentElement;
+            } else {
+              const observedChild = wrapper.firstElementChild;
+              if (
+                target.parentElement instanceof HTMLElement &&
+                observedChild instanceof HTMLElement
+              ) {
+                const targetWidth = target.getBoundingClientRect().width;
+                const childWidth = observedChild.getBoundingClientRect().width;
+                if (Math.abs(targetWidth - childWidth) < 0.5) {
+                  target = target.parentElement;
+                }
+              }
+            }
+            resplitWidth = target.offsetWidth;
+          }
+          measureAndSetData(true, resplitWidth);
           return;
         }
 
@@ -2449,6 +2483,12 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
       };
 
       const scheduleKerningUpkeep = () => {
+        // In line mode we need to apply immediately to avoid a visible
+        // intermediate frame where font metrics changed but lines did not.
+        if (splitLines) {
+          runKerningUpkeep();
+          return;
+        }
         if (kerningAnimationFrameRef.current !== null) return;
         if (!ownerWindow) {
           runKerningUpkeep();
@@ -2579,16 +2619,17 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
         target.parentElement instanceof HTMLElement
       ) {
         target = target.parentElement;
-      }
-      const observedChild = containerRef.current.firstElementChild;
-      if (
-        target.parentElement instanceof HTMLElement &&
-        observedChild instanceof HTMLElement
-      ) {
-        const targetWidth = target.getBoundingClientRect().width;
-        const childWidth = observedChild.getBoundingClientRect().width;
-        if (Math.abs(targetWidth - childWidth) < 0.5) {
-          target = target.parentElement;
+      } else {
+        const observedChild = containerRef.current.firstElementChild;
+        if (
+          target.parentElement instanceof HTMLElement &&
+          observedChild instanceof HTMLElement
+        ) {
+          const targetWidth = target.getBoundingClientRect().width;
+          const childWidth = observedChild.getBoundingClientRect().width;
+          if (Math.abs(targetWidth - childWidth) < 0.5) {
+            target = target.parentElement;
+          }
         }
       }
       let lastWidth: number | null = null;
@@ -2614,7 +2655,7 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
         }
         resizeTimerRef.current = setTimeout(() => {
           pendingFullResplitRef.current = true;
-          measureAndSetData(true);
+          measureAndSetData(true, currentWidth);
         }, 100);
       };
 
@@ -2692,6 +2733,9 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
       if (!whileScrollLabel) return;
       if (!resolvedVariants) return;
       if (!splitResultRef.current) return;
+      if (splitResultVersionRef.current !== childTreeVersion) return;
+      const liveChildElement = containerRef.current?.firstElementChild;
+      if (!(liveChildElement instanceof HTMLElement)) return;
 
       const variantName = whileScrollLabel;
       const def = resolvedVariants[variantName];
@@ -2745,6 +2789,7 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
       delayScope,
       reduceMotionActive,
       custom,
+      childTreeVersion,
     ]);
 
     if (!isValidElement(children)) {
@@ -2823,6 +2868,14 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
           : isWord
             ? variantInfo.wordInfos[index]
             : variantInfo.lineInfos[index];
+        const renderAsMotionSplitNode = hasVariants;
+        if (!renderAsMotionSplitNode) {
+          if (isVoidTag) {
+            return createElement(node.tag, { key, ...props });
+          }
+          return createElement(node.tag, { key, ...props }, renderedChildren);
+        }
+
         const MotionTag = getMotionComponent(node.tag);
         const variantsForType = (variantsByType as Record<string, unknown>)[
           splitType

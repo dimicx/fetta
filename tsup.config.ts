@@ -12,6 +12,6 @@ export default defineConfig({
   clean: true,
   treeshake: true,
   target: "es2017",
-  external: ["react", "react/jsx-runtime", "motion"],
+  external: ["react", "react/jsx-runtime", "react-dom", "motion"],
   splitting: true,
 });
