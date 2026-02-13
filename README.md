@@ -1,6 +1,6 @@
 # Fetta
 
-A text-splitting library with kerning compensation for smooth, natural text animations.
+Text splitting that keeps kerning intact.
 
 Split text into characters, words, and lines while preserving the original typography. Works with any animation library.
 
@@ -8,17 +8,17 @@ Split text into characters, words, and lines while preserving the original typog
 
 - **Kerning Compensation** — Maintains original character spacing when splitting by chars
 - **Nested Elements** — Preserves `<a>`, `<em>`, `<strong>` and other inline elements with all attributes
-- **Line Detection** — Automatically groups words into lines
+- **Line Detection** — Groups words into rendered lines
 - **Dash Handling** — Allows text to wrap naturally after em-dashes, en-dashes, hyphens, and slashes
 - **Auto Re-split** — Re-splits on container resize
-- **Auto-Revert** — Restore original HTML after animations
+- **Auto Revert** — Restores original HTML after animations
 - **Masking** — Wrap elements in clip containers for reveal animations
 - **Emoji Support** — Properly handles compound emojis and complex Unicode characters
 - **Accessible** — Automatic screen reader support, even when splitting text with nested links or emphasis
 - **TypeScript** — Full type definitions included
 - **React Component** — Declarative wrapper for React projects
-- **Built-in Viewport** — Viewport detection for scroll-triggered animations in React
-- **Library Agnostic** — Works with Motion, GSAP, or any animation library
+- **Viewport Triggers** — Scroll enter/leave callbacks with configurable thresholds in React
+- **Library Agnostic** — Works with Motion, GSAP, CSS, or any animation library
 
 ## Installation
 
@@ -27,9 +27,10 @@ npm install fetta
 ```
 
 **Bundle size** (minified + brotli)
-- `fetta`: ~5.4 kB
-- `fetta/react`: ~6.7 kB
-- `fetta/motion`: ~11.2 kB
+- `fetta`: ~7.17 kB
+- `fetta/react`: ~8.66 kB
+- `fetta/motion`: ~15.93 kB
+- `fetta/helpers`: ~765 B
 
 ## Quick Start
 
@@ -140,7 +141,7 @@ layers.cleanup(); // removes clones/wrappers, keeps split DOM
 | `cloneOffset.axis` | `"x" \| "y"` | `"y"` | Axis used for initial clone offset |
 | `cloneOffset.direction` | `"start" \| "end"` | `"start"` | Offset direction (`start` => negative) |
 | `cloneOffset.distance` | `string` | `"100%"` | Offset distance |
-| `trackClassName` / `cloneClassName` | `string \| (ctx) => string` | — | Class names (static or per-item) |
+| `trackClassName` / `cloneClassName` | `string \| (ctx) => string \| undefined` | — | Class names (static or per-item) |
 | `trackStyle` / `cloneStyle` | `object \| (ctx) => object` | — | Inline styles (static or per-item) |
 
 For reveal/swap effects, use matching `mask` in `splitText` (`"chars"`, `"words"`, or `"lines"`).
@@ -401,6 +402,104 @@ splitText(element, { type: 'chars', propIndex: true });
   }}
 >
   <h1>Reverts to original HTML after animation</h1>
+</SplitText>
+```
+
+### Motion (`fetta/motion`)
+
+#### Basic Variants
+
+```tsx
+import { SplitText } from 'fetta/motion';
+import { stagger } from 'motion';
+
+<SplitText
+  variants={{
+    hidden: { opacity: 0, y: 20, filter: 'blur(6px)' },
+    visible: { opacity: 1, y: 0, filter: 'blur(0px)' },
+  }}
+  initial="hidden"
+  animate="visible"
+  transition={{ duration: 0.6, delay: stagger(0.04) }}
+  options={{ type: 'words' }}
+>
+  <h1>Hello World</h1>
+</SplitText>
+```
+
+#### Line-Aware Stagger
+
+```tsx
+import { SplitText } from 'fetta/motion';
+import { stagger } from 'motion';
+
+<SplitText
+  delayScope="local"
+  variants={{
+    hidden: { chars: { opacity: 0 } },
+    visible: {
+      chars: ({ lineIndex }) => ({
+        opacity: 1,
+        transition: {
+          duration: 0.3,
+          delay: stagger(0.015, {
+            startDelay: lineIndex * 0.2,
+            from: lineIndex % 2 === 0 ? "first" : "last",
+          }),
+        },
+      }),
+    },
+  }}
+  initial="hidden"
+  animate="visible"
+  options={{ type: "chars,lines" }}
+>
+  <p>Line-aware per-character animation</p>
+</SplitText>
+```
+
+#### Scroll-Driven Reveal
+
+```tsx
+import { SplitText } from 'fetta/motion';
+
+<SplitText
+  initialStyles={{ chars: { opacity: 0.2 } }}
+  whileScroll={{
+    chars: ({ globalIndex }) => ({
+      opacity: 1,
+      transition: {
+        duration: 0.3,
+        at: globalIndex * 0.025,
+        ease: "linear",
+      },
+    }),
+  }}
+  scroll={{ offset: ["start 90%", "start 10%"] }}
+  options={{ type: "chars" }}
+>
+  <p>Characters fade in with scroll progress</p>
+</SplitText>
+```
+
+#### Hover Interaction
+
+```tsx
+import { SplitText } from 'fetta/motion';
+import { stagger } from 'motion';
+
+<SplitText
+  variants={{
+    rest: { chars: { opacity: 0.85, y: 0 } },
+    hover: { chars: { opacity: 1, y: -6 } },
+  }}
+  initial="rest"
+  animate="rest"
+  whileHover="hover"
+  transition={{ duration: 0.25, delay: stagger(0.01) }}
+  options={{ type: 'chars' }}
+>
+  <p>Hover this text</p>
 </SplitText>
 ```
 
