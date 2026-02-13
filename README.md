@@ -87,12 +87,13 @@ const result = splitText(element, options);
 | `mask` | `string` | — | Wrap elements in `overflow: clip` container: `"chars"`, `"words"`, or `"lines"` |
 | `autoSplit` | `boolean` | `false` | Re-split on container resize |
 | `onResplit` | `function` | — | Callback after autoSplit/full-resplit replaces split output elements |
-| `onSplit` | `function` | — | Callback after initial split |
+| `onSplit` | `function` | — | Callback after initial split. Return animation/promise for `revertOnComplete` |
 | `revertOnComplete` | `boolean` | `false` | Auto-revert when animation completes |
 | `propIndex` | `boolean` | `false` | Add CSS custom properties: `--char-index`, `--word-index`, `--line-index` |
 | `disableKerning` | `boolean` | `false` | Skip kerning compensation (no margin adjustments) |
+| `isolateKerningMeasurement` | `boolean` | `true` | Measure kerning in a document-level isolated root to avoid ancestor transform effects |
 | `initialStyles` | `object` | — | Apply initial inline styles to chars/words/lines after split. Values can be objects or `(el, index) => object` functions |
-| `initialClasses` | `object` | — | Apply initial CSS classes to chars/words/lines after split. Values can be strings or `(el, index) => string` functions |
+| `initialClasses` | `object` | — | Apply initial CSS classes to chars/words/lines. Values are strings |
 
 #### Return Value
 
@@ -153,13 +154,89 @@ import { SplitText } from 'fetta/react';
 
 `fetta/react` forwards common wrapper DOM props (`id`, `role`, `tabIndex`, `aria-*`, `data-*`, and event handlers like `onClick`) to the wrapper element.
 
-For Motion variants:
+`fetta/react` props:
 
-```tsx
-import { SplitText } from 'fetta/motion';
+#### React Props
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `children` | `ReactElement` | — | Single React element to split |
+| `as` | `keyof JSX.IntrinsicElements` | `"div"` | Wrapper element type |
+| `className` | `string` | — | Class name for wrapper element |
+| `style` | `CSSProperties` | — | Additional styles for wrapper element |
+| `ref` | `Ref<HTMLElement>` | — | Ref to container element |
+| `onSplit` | `(result) => CallbackReturn` | — | Called after text is split |
+| `onResplit` | `(result) => void` | — | Called when autoSplit/full-resplit replaces split output elements |
+| `options` | `SplitTextOptions` | — | Split options (type, classes, mask, propIndex, disableKerning, isolateKerningMeasurement) |
+| `autoSplit` | `boolean` | `false` | Re-split on container resize |
+| `waitForFonts` | `boolean` | `true` | Wait for `document.fonts.ready` before splitting (recommended for stable kerning). Set `false` for immediate split. |
+| `revertOnComplete` | `boolean` | `false` | Revert after animation completes |
+| `onRevert` | `() => void` | — | Called when split text is reverted (manual or automatic) |
+| `viewport` | `ViewportOptions` | — | Configure viewport detection |
+| `onViewportEnter` | `(result) => CallbackReturn` | — | Called when element enters viewport |
+| `onViewportLeave` | `(result) => CallbackReturn` | — | Called when element leaves viewport |
+| `initialStyles` | `object` | — | Apply initial inline styles to chars/words/lines. Values can be objects or `(el, index) => object` functions |
+| `initialClasses` | `object` | — | Apply initial CSS classes to chars/words/lines. Values are strings |
+| `resetOnViewportLeave` | `boolean` | `false` | Re-apply initialStyles/initialClasses when leaving viewport |
+
+#### Shared `SplitTextOptions` (`options` prop)
+
+| Option | Type | Default | Description |
+|------|------|---------|-------------|
+| `type` | `SplitType` | `"chars,words,lines"` | What to split: `"chars"`, `"words"`, `"lines"`, or combinations |
+| `charClass` | `string` | `"split-char"` | CSS class for character spans |
+| `wordClass` | `string` | `"split-word"` | CSS class for word spans |
+| `lineClass` | `string` | `"split-line"` | CSS class for line spans |
+| `mask` | `"lines" \| "words" \| "chars"` | — | Wrap elements in `overflow: clip` mask containers |
+| `propIndex` | `boolean` | `false` | Add CSS index variables (`--char-index`, `--word-index`, `--line-index`) |
+| `disableKerning` | `boolean` | `false` | Skip kerning compensation (no margin adjustments) |
+| `isolateKerningMeasurement` | `boolean` | `true` | Measure kerning in a document-level isolated root |
+
+#### Callback Signature
+
+All callbacks (`onSplit`, `onResplit`, `onViewportEnter`, `onViewportLeave`) receive:
+
+```ts
+{
+  chars: HTMLSpanElement[];
+  words: HTMLSpanElement[];
+  lines: HTMLSpanElement[];
+  revert: () => void;
+}
 ```
 
-`fetta/motion` forwards standard Motion/DOM wrapper props (`id`, `role`, `tabIndex`, `layout`, `drag`, `data-*`, etc.). Split lifecycle props (`variants`, `initial`, `animate`, `exit`, `while*`, `viewport`, `transition`, callbacks) still control animation behavior, and split-trigger `while*` props support both named and inline variant definitions.
+```ts
+type CallbackReturn =
+  | void
+  | Promise<unknown>
+  | { finished: Promise<unknown> }
+  | { then: (onFulfilled?: ((result: unknown) => unknown) | undefined) => unknown }
+  | CallbackReturn[];
+```
+
+When using `autoSplit` with `lines` in scroll-linked or scroll-triggered animations, re-attach scroll/timeline logic inside `onResplit` so it binds to the new split element references.
+
+`onRevert` is a separate zero-argument callback that fires when a split cycle actually reverts.
+
+#### Viewport Options
+
+```ts
+{
+  amount?: number | "some" | "all"; // Enter threshold, default: 0
+  leave?: number | "some" | "all";  // Leave threshold, default: 0
+  margin?: string;                  // Root margin, default: "0px"
+  once?: boolean;                   // Only trigger once, default: false
+  root?: RefObject<Element>;        // Optional root element
+}
+```
+
+### `<SplitText>` (Motion)
+
+```tsx
+import { SplitText } from "fetta/motion";
+```
+
+`fetta/motion` includes all props from `fetta/react`, plus Motion variant props. It also forwards standard Motion/DOM wrapper props (`id`, `role`, `tabIndex`, `layout`, `drag`, `data-*`, etc.) to the wrapper.
 
 Animate on exit with Motion's `AnimatePresence` (make `SplitText` the direct child):
 
@@ -184,58 +261,28 @@ import { AnimatePresence } from "motion/react";
 </AnimatePresence>
 ```
 
-#### Props
+#### Motion-only Props
 
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
-| `children` | `ReactElement` | — | Single React element to split |
-| `as` | `keyof JSX.IntrinsicElements` | `"div"` | Wrapper element type |
-| `className` | `string` | — | Class name for wrapper element |
-| `style` | `CSSProperties` | — | Additional styles for wrapper element |
-| `ref` | `Ref<HTMLElement>` | — | Ref to container element |
-| `onSplit` | `(result) => void` | — | Called after text is split |
-| `onResplit` | `(result) => void` | — | Called when autoSplit/full-resplit replaces split output elements |
-| `options` | `SplitOptions` | — | Split options (type, classes, mask, propIndex, disableKerning) |
-| `autoSplit` | `boolean` | `false` | Re-split on container resize |
-| `animateOnResplit` | `boolean` | `false` | Replay variant enter animation on autoSplit/full-resplit. Set `true` to re-run enter animation on resplit |
-| `waitForFonts` | `boolean` | `true` | Wait for `document.fonts.ready` before splitting (recommended for stable kerning). Set `false` for immediate split. |
-| `revertOnComplete` | `boolean` | `false` | Revert after animation completes |
-| `onRevert` | `() => void` | — | Called when split text is reverted (manual or automatic) |
-| `viewport` | `ViewportOptions` | — | Configure viewport detection |
-| `onViewportEnter` | `(result) => void` | — | Called when element enters viewport |
-| `onViewportLeave` | `(result) => void` | — | Called when element leaves viewport |
-| `initialStyles` | `object` | — | Apply initial inline styles to chars/words/lines. Values can be objects or `(el, index) => object` functions |
-| `initialClasses` | `object` | — | Apply initial CSS classes to chars/words/lines. Values can be strings or `(el, index) => string` functions |
-| `resetOnViewportLeave` | `boolean` | `false` | Re-apply initialStyles/initialClasses when leaving viewport |
-
-#### Callback Signature
-
-All callbacks (`onSplit`, `onResplit`, `onViewportEnter`, `onViewportLeave`) receive the same result object:
-
-```ts
-{
-  chars: HTMLSpanElement[];
-  words: HTMLSpanElement[];
-  lines: HTMLSpanElement[];
-  revert: () => void;
-}
-```
-
-When using `autoSplit` with `lines` in scroll-linked or scroll-triggered animations, re-attach scroll/timeline logic inside `onResplit` so it binds to the new split element references.
-
-`onRevert` is a separate zero-argument callback that fires when a split cycle actually reverts.
-
-#### Viewport Options
-
-```ts
-{
-  amount?: number | "some" | "all"; // Enter threshold, default: 0
-  leave?: number | "some" | "all";  // Leave threshold, default: 0
-  margin?: string;                  // Root margin, default: "0px"
-  once?: boolean;                   // Only trigger once, default: false
-  root?: RefObject<Element>;        // Optional root element
-}
-```
+| `variants` | `Record<string, VariantDefinition<TCustom>>` | — | Named variant definitions |
+| `initial` | `string \| VariantDefinition<TCustom> \| false` | — | Initial variant applied instantly after split |
+| `animate` | `string \| VariantDefinition<TCustom>` | — | Base variant |
+| `exit` | `string \| VariantDefinition<TCustom> \| false` | — | Exit variant (AnimatePresence) |
+| `whileInView` | `string \| VariantDefinition<TCustom>` | — | Variant while element is in view |
+| `whileOutOfView` | `string \| VariantDefinition<TCustom>` | — | Variant after element leaves view |
+| `whileScroll` | `string \| VariantDefinition<TCustom>` | — | Scroll-driven variant (highest trigger priority) |
+| `whileHover` | `string \| VariantDefinition<TCustom>` | — | Variant on hover |
+| `whileTap` | `string \| VariantDefinition<TCustom>` | — | Variant on tap/press |
+| `whileFocus` | `string \| VariantDefinition<TCustom>` | — | Variant on focus |
+| `animateOnResplit` | `boolean` | `false` | Replay initial->animate on autoSplit/full-resplit |
+| `scroll` | `{ offset?, axis?, container? }` | — | Scroll tracking options for `whileScroll` |
+| `transition` | `AnimationOptions` | — | Global/default transition for variants |
+| `custom` | `TCustom` | — | Custom data forwarded to function variants |
+| `delayScope` | `"global" \| "local"` | `"global"` | Delay-function index scope (`globalIndex` vs relative `index`) |
+| `reducedMotion` | `"user" \| "always" \| "never"` | — | Reduced-motion behavior for this component |
+| `onHoverStart` | `() => void` | — | Called when hover starts |
+| `onHoverEnd` | `() => void` | — | Called when hover ends |
 
 ## Examples
 
