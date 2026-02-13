@@ -27,10 +27,10 @@ npm install fetta
 ```
 
 **Bundle size** (minified + brotli)
-- `fetta`: ~7.17 kB
-- `fetta/react`: ~8.66 kB
-- `fetta/motion`: ~15.93 kB
-- `fetta/helpers`: ~765 B
+- `fetta`: ~7.04 kB
+- `fetta/react`: ~8.21 kB
+- `fetta/motion`: ~13.68 kB
+- `fetta/helpers`: ~742 B
 
 ## Quick Start
 

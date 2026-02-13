@@ -343,6 +343,41 @@ describe("SplitText motion parity", () => {
     );
   });
 
+  it("passes current split nodes to onResplit after full resplit", async () => {
+    const onResplit = vi.fn();
+    const { container } = render(
+      <SplitText className="wrapper" autoSplit options={{ type: "chars" }} onResplit={onResplit}>
+        <p style={{ fontSize: "20px" }}>Responsive split text</p>
+      </SplitText>
+    );
+
+    await waitFor(() => {
+      expect(container.querySelectorAll(".split-char").length).toBeGreaterThan(0);
+    });
+
+    const initialFirstChar = container.querySelector(".split-char");
+    const childElement = container.querySelector("p") as HTMLElement | null;
+    expect(childElement).toBeTruthy();
+
+    await triggerAutoSplitWidthResize(childElement!, 320);
+    await triggerAutoSplitWidthResize(childElement!, 420);
+
+    await waitFor(() => {
+      expect(onResplit).toHaveBeenCalledTimes(1);
+    });
+
+    const result = onResplit.mock.calls[0]?.[0] as
+      | { chars: HTMLSpanElement[] }
+      | undefined;
+    expect(result?.chars.length ?? 0).toBeGreaterThan(0);
+
+    const callbackChar = result!.chars[0];
+    const liveChild = container.querySelector("p") as HTMLElement | null;
+    expect(callbackChar.isConnected).toBe(true);
+    expect(liveChild?.contains(callbackChar)).toBe(true);
+    expect(callbackChar).not.toBe(initialFirstChar);
+  });
+
   it("waits for wrapper-only exit completion before safeToRemove", async () => {
     const motionReact = await getMotionReactTestAPI();
     motionReact.__setPresence(false);

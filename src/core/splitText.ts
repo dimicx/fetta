@@ -15,6 +15,10 @@ import {
   resolveAutoSplitWidth,
   resolveAutoSplitTargets,
 } from "../internal/autoSplitResize";
+import {
+  buildLineFingerprintFromData,
+  normalizeLineFingerprintText,
+} from "../internal/lineFingerprint";
 
 /** Animation object shape used by Motion's `animate` return value. */
 export type FinishedAnimation = {
@@ -1513,40 +1517,11 @@ function performSplit(
   }
 }
 
-function normalizeLineFingerprintText(value: string): string {
-  return value.replace(/\u00A0/g, " ").replace(/\s+/g, " ").trim();
-}
-
 function buildLineFingerprintFromElements(lines: HTMLSpanElement[]): string {
   if (lines.length === 0) return "";
   return lines
     .map((line) => normalizeLineFingerprintText(line.textContent ?? ""))
     .join("\n");
-}
-
-function collectNodeText(node: SplitTextDataNode): string {
-  if (node.type === "text") return node.text;
-  return node.children.map((child) => collectNodeText(child)).join("");
-}
-
-function collectLineTextsFromData(
-  nodes: SplitTextDataNode[],
-  lineTexts: string[]
-): void {
-  for (const node of nodes) {
-    if (node.type !== "element") continue;
-    if (node.split === "line") {
-      lineTexts.push(normalizeLineFingerprintText(collectNodeText(node)));
-      continue;
-    }
-    collectLineTextsFromData(node.children, lineTexts);
-  }
-}
-
-function buildLineFingerprintFromData(data: SplitTextData): string {
-  const lineTexts: string[] = [];
-  collectLineTextsFromData(data.nodes, lineTexts);
-  return lineTexts.join("\n");
 }
 
 /**

@@ -11,7 +11,7 @@ export default defineConfig({
   dts: true,
   clean: true,
   treeshake: true,
-  target: "es2017",
-  external: ["react", "react/jsx-runtime", "react-dom", "motion"],
+  target: "es2020",
+  external: ["react", "react/jsx-runtime", "motion"],
   splitting: true,
 });

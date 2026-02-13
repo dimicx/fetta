@@ -16,6 +16,7 @@ import {
   resolveAutoSplitWidth,
   resolveAutoSplitTargets,
 } from "../internal/autoSplitResize";
+import { buildLineFingerprintFromData } from "../internal/lineFingerprint";
 import type { InitialStyles, InitialClasses } from "../internal/initialStyles";
 import { waitForFontsReady } from "../internal/waitForFontsReady";
 import { animate, scroll } from "motion";
@@ -27,7 +28,6 @@ import type {
   SequenceTime,
 } from "motion";
 import type { HTMLMotionProps } from "motion/react";
-import { flushSync } from "react-dom";
 import {
   cloneElement,
   createElement,
@@ -43,7 +43,6 @@ import {
   useMemo,
   useRef,
   useState,
-  useId,
 } from "react";
 import type {
   AnimationCallbackReturn,
@@ -1366,35 +1365,6 @@ function resolveSplitFlags(type: SplitTextOptions["type"] | undefined): {
   return { splitChars, splitWords, splitLines };
 }
 
-function normalizeLineFingerprintText(value: string): string {
-  return value.replace(/\u00A0/g, " ").replace(/\s+/g, " ").trim();
-}
-
-function collectNodeText(node: SplitTextDataNode): string {
-  if (node.type === "text") return node.text;
-  return node.children.map((child) => collectNodeText(child)).join("");
-}
-
-function collectLineTextsFromData(
-  nodes: SplitTextDataNode[],
-  lineTexts: string[]
-): void {
-  for (const node of nodes) {
-    if (node.type !== "element") continue;
-    if (node.split === "line") {
-      lineTexts.push(normalizeLineFingerprintText(collectNodeText(node)));
-      continue;
-    }
-    collectLineTextsFromData(node.children, lineTexts);
-  }
-}
-
-function buildLineFingerprintFromData(data: SplitTextData): string {
-  const lineTexts: string[] = [];
-  collectLineTextsFromData(data.nodes, lineTexts);
-  return lineTexts.join("\n");
-}
-
 function buildSplitDataLayout(data: SplitTextData): SplitDataLayout {
   const relations = collectRelations(data.nodes);
   const maps = buildIndexMaps(relations);
@@ -1505,7 +1475,6 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
     const [isInView, setIsInView] = useState(false);
     const [isPresent, safeToRemove] = usePresence();
     const presenceEnabled = typeof safeToRemove === "function";
-    const instanceId = useId();
     const prefersReducedMotion = useReducedMotion();
     const reduceMotionActive =
       reducedMotion === "always" ||
@@ -1682,9 +1651,6 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
     const initialVariantRef = useRef(initialLabel);
     const whileInViewRef = useRef(whileInViewLabel);
     const whileOutOfViewRef = useRef(whileOutOfViewLabel);
-    const debugPresence =
-      (options as { __debugPresence?: boolean } | undefined)?.__debugPresence ===
-      true;
 
     useLayoutEffect(() => {
       onSplitRef.current = onSplit;
@@ -1702,28 +1668,6 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
       whileInViewRef.current = whileInViewLabel;
       whileOutOfViewRef.current = whileOutOfViewLabel;
     });
-
-    useEffect(() => {
-      if (!debugPresence) return;
-      console.log(
-        "[fetta][SplitText]",
-        instanceId,
-        "present",
-        isPresent,
-        "ready",
-        isReady,
-        "data",
-        !!data
-      );
-    }, [debugPresence, instanceId, isPresent, isReady, data]);
-
-    useEffect(() => {
-      if (!debugPresence) return;
-      console.log("[fetta][SplitText]", instanceId, "mount");
-      return () => {
-        console.log("[fetta][SplitText]", instanceId, "unmount");
-      };
-    }, [debugPresence, instanceId]);
 
     // Refs for tracking state
     const hasSplitRef = useRef(false);
@@ -1899,14 +1843,12 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
 
         // Bump a key so React remounts the split subtree instead of reconciling
         // against stale node references captured by callbacks.
-        flushSync(() => {
-          setChildTreeVersion((current) => current + 1);
-          // Keep content visible after first split to avoid a flash during resplits.
-          if (!isResize) {
-            setIsReady(false);
-          }
-          setData(nextData);
-        });
+        setChildTreeVersion((current) => current + 1);
+        // Keep content visible after first split to avoid a flash during resplits.
+        if (!isResize) {
+          setIsReady(false);
+        }
+        setData(nextData);
       },
       [buildSplitDataFromProbe]
     );
@@ -2372,11 +2314,19 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
 
       if (pendingFullResplitRef.current) {
         if (onResplitRef.current) {
-          onResplitRef.current({
-            chars: splitElements.chars,
-            words: splitElements.words,
-            lines: splitElements.lines,
-            revert,
+          queueMicrotask(() => {
+            const currentChild = containerRef.current?.firstElementChild;
+            if (!(currentChild instanceof HTMLElement)) return;
+            const currentSplitElements = collectSplitElements(
+              currentChild,
+              optionsRef.current
+            );
+            onResplitRef.current?.({
+              chars: currentSplitElements.chars,
+              words: currentSplitElements.words,
+              lines: currentSplitElements.lines,
+              revert,
+            });
           });
         }
         pendingFullResplitRef.current = false;
