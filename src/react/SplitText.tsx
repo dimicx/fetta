@@ -1,4 +1,5 @@
 import { splitText, normalizeToPromise } from "../core/splitText";
+import type { AnimationCallbackReturn } from "../core/splitText";
 import {
   reapplyInitialStyles,
   reapplyInitialClasses,
@@ -72,13 +73,6 @@ export interface SplitTextElements {
   revert: () => void;
 }
 
-/** Return type for callbacks - void, single animation, array of animations, or promise */
-type CallbackReturn =
-  | void
-  | { finished: Promise<unknown> }
-  | Array<{ finished: Promise<unknown> }>
-  | Promise<unknown>;
-
 // ---------------------------------------------------------------------------
 // Props
 // ---------------------------------------------------------------------------
@@ -120,7 +114,7 @@ interface SplitTextProps extends WrapperHTMLProps {
    * Called after text is split.
    * Return an animation or promise to enable revert (requires revertOnComplete).
    */
-  onSplit?: (result: SplitTextElements) => CallbackReturn;
+  onSplit?: (result: SplitTextElements) => AnimationCallbackReturn;
   /** Called when autoSplit/full-resplit replaces split output elements */
   onResplit?: (result: SplitTextElements) => void;
   options?: SplitTextOptions;
@@ -130,9 +124,9 @@ interface SplitTextProps extends WrapperHTMLProps {
   /** Viewport observer options (replaces `inView`). Configures IntersectionObserver. */
   viewport?: ViewportOptions;
   /** Called when element enters viewport (replaces `onInView`). Return animation for revertOnComplete support */
-  onViewportEnter?: (result: SplitTextElements) => CallbackReturn;
+  onViewportEnter?: (result: SplitTextElements) => AnimationCallbackReturn;
   /** Called when element leaves viewport (replaces `onLeaveView`) */
-  onViewportLeave?: (result: SplitTextElements) => CallbackReturn;
+  onViewportLeave?: (result: SplitTextElements) => AnimationCallbackReturn;
   /** Called when split text is reverted (manual or automatic) */
   onRevert?: () => void;
   /** Apply initial inline styles to elements after split (and after kerning compensation).

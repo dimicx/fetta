@@ -39,7 +39,11 @@ import {
   useState,
   useId,
 } from "react";
-import type { SplitTextData, SplitTextDataNode } from "../core/splitText";
+import type {
+  AnimationCallbackReturn,
+  SplitTextData,
+  SplitTextDataNode,
+} from "../core/splitText";
 
 export interface SplitTextOptions {
   type?:
@@ -104,13 +108,6 @@ export interface SplitTextElements {
   /** Revert to original HTML and cleanup observers */
   revert: () => void;
 }
-
-/** Return type for callbacks - void, single animation, array of animations, or promise */
-type CallbackReturn =
-  | void
-  | { finished: Promise<unknown> }
-  | Array<{ finished: Promise<unknown> }>
-  | Promise<unknown>;
 
 // ---------------------------------------------------------------------------
 // Variant types
@@ -1119,7 +1116,7 @@ interface SplitTextProps<TCustom = unknown> extends WrapperMotionProps {
    * Return an animation or promise to enable revert (requires revertOnComplete).
    * Still fires in variant mode for side effects.
    */
-  onSplit?: (result: SplitTextElements) => CallbackReturn;
+  onSplit?: (result: SplitTextElements) => AnimationCallbackReturn;
   /** Called when autoSplit/full-resplit replaces split output elements */
   onResplit?: (result: SplitTextElements) => void;
   options?: SplitTextOptions;
@@ -1129,9 +1126,9 @@ interface SplitTextProps<TCustom = unknown> extends WrapperMotionProps {
   /** Viewport observer options (replaces `inView`). Configures IntersectionObserver. */
   viewport?: ViewportOptions;
   /** Called when element enters viewport (replaces `onInView`). Return animation for revertOnComplete support */
-  onViewportEnter?: (result: SplitTextElements) => CallbackReturn;
+  onViewportEnter?: (result: SplitTextElements) => AnimationCallbackReturn;
   /** Called when element leaves viewport (replaces `onLeaveView`) */
-  onViewportLeave?: (result: SplitTextElements) => CallbackReturn;
+  onViewportLeave?: (result: SplitTextElements) => AnimationCallbackReturn;
   /** Called when split text is reverted (manual or automatic) */
   onRevert?: () => void;
   /** Apply initial inline styles to elements after split (and after kerning compensation).

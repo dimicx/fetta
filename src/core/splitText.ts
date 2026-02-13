@@ -10,6 +10,29 @@ import {
   querySplitWords,
 } from "../internal/kerningUpkeep";
 
+/** Animation object shape used by Motion's `animate` return value. */
+export type FinishedAnimation = {
+  finished: Promise<unknown>;
+};
+
+/** Generic thenable animation object (e.g. GSAP Tween/Timeline). */
+export type ThenableAnimation = {
+  then: (
+    onFulfilled?: ((result: unknown) => unknown) | undefined
+  ) => unknown;
+};
+
+type AnimationCallbackValue =
+  | FinishedAnimation
+  | ThenableAnimation
+  | Promise<unknown>;
+
+/** Callback return type accepted by revertOnComplete normalization. */
+export type AnimationCallbackReturn =
+  | void
+  | AnimationCallbackValue
+  | AnimationCallbackReturn[];
+
 // Tags whose implicit ARIA role allows aria-label (headings, landmarks, interactive elements).
 // Other elements (span, div, p, etc.) use a sr-only copy instead.
 const ARIA_LABEL_ALLOWED_TAGS = new Set([
@@ -56,11 +79,7 @@ export interface SplitTextOptions {
     chars: HTMLSpanElement[];
     words: HTMLSpanElement[];
     lines: HTMLSpanElement[];
-  }) =>
-    | void
-    | { finished: Promise<unknown> }
-    | Array<{ finished: Promise<unknown> }>
-    | Promise<unknown>;
+  }) => AnimationCallbackReturn;
   /** Auto-revert when onSplit animation completes */
   revertOnComplete?: boolean;
   /** Add CSS custom properties (--char-index, --word-index, --line-index) */
