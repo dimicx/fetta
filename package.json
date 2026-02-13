@@ -41,6 +41,7 @@
     "test": "vitest",
     "test:ui": "vitest --ui",
     "test:coverage": "vitest run --coverage",
+    "pretest:e2e": "pnpm run build",
     "test:e2e": "playwright test",
     "test:all": "vitest run --coverage && playwright test",
     "size": "size-limit",

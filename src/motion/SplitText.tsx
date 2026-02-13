@@ -10,6 +10,11 @@ import {
   clearKerningCompensation,
   querySplitWords,
 } from "../internal/kerningUpkeep";
+import {
+  getObservedWidth,
+  recordWidthChange,
+  resolveAutoSplitTargets,
+} from "../internal/autoSplitResize";
 import type { InitialStyles, InitialClasses } from "../internal/initialStyles";
 import { waitForFontsReady } from "../internal/waitForFontsReady";
 import { animate, scroll } from "motion";
@@ -1729,6 +1734,7 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
     const lastKerningStyleKeyRef = useRef<string | null>(null);
     const currentLineFingerprintRef = useRef<string | null>(null);
     const pendingFullResplitRef = useRef(false);
+    const autoSplitWidthByTargetRef = useRef<Map<HTMLElement, number>>(new Map());
     const splitResultVersionRef = useRef<number>(-1);
     const hasRunOnSplitForCycleRef = useRef(false);
     const originalHTMLRef = useRef<string | null>(null);
@@ -1756,6 +1762,7 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
       hasRevertedRef.current = false;
       originalHTMLRef.current = null;
       pendingFullResplitRef.current = false;
+      autoSplitWidthByTargetRef.current = new Map();
       splitResultVersionRef.current = -1;
       hasRunOnSplitForCycleRef.current = false;
       lastKerningStyleKeyRef.current = null;
@@ -2438,28 +2445,13 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
           }
           pendingFullResplitRef.current = true;
           let resplitWidth: number | undefined;
-          const wrapper = containerRef.current;
-          if (wrapper instanceof HTMLElement) {
-            let target: HTMLElement = wrapper;
-            if (
-              target.dataset.fettaAutoSplitWrapper === "true" &&
-              target.parentElement instanceof HTMLElement
-            ) {
-              target = target.parentElement;
-            } else {
-              const observedChild = wrapper.firstElementChild;
-              if (
-                target.parentElement instanceof HTMLElement &&
-                observedChild instanceof HTMLElement
-              ) {
-                const targetWidth = target.getBoundingClientRect().width;
-                const childWidth = observedChild.getBoundingClientRect().width;
-                if (Math.abs(targetWidth - childWidth) < 0.5) {
-                  target = target.parentElement;
-                }
-              }
-            }
-            resplitWidth = resolveLineMeasureWidth(target.offsetWidth);
+          const targets = resolveAutoSplitTargets(currentElement);
+          const primaryTarget = targets[0];
+          if (primaryTarget instanceof HTMLElement) {
+            const measuredWidth =
+              autoSplitWidthByTargetRef.current.get(primaryTarget);
+            const fallbackWidth = measuredWidth ?? primaryTarget.offsetWidth;
+            resplitWidth = resolveLineMeasureWidth(fallbackWidth);
           }
           measureAndSetData(true, resplitWidth);
           return;
@@ -2626,33 +2618,24 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
       if (!autoSplit || !containerRef.current) return;
       if (!data) return;
 
-      let skipFirst = true;
-      let target: HTMLElement = containerRef.current;
-      if (
-        target.dataset.fettaAutoSplitWrapper === "true" &&
-        target.parentElement instanceof HTMLElement
-      ) {
-        target = target.parentElement;
-      } else {
-        const observedChild = containerRef.current.firstElementChild;
-        if (
-          target.parentElement instanceof HTMLElement &&
-          observedChild instanceof HTMLElement
-        ) {
-          const targetWidth = target.getBoundingClientRect().width;
-          const childWidth = observedChild.getBoundingClientRect().width;
-          if (Math.abs(targetWidth - childWidth) < 0.5) {
-            target = target.parentElement;
-          }
-        }
-      }
-      let lastWidth: number | null = null;
+      const child = containerRef.current.firstElementChild;
+      if (!(child instanceof HTMLElement)) return;
+
+      const targets = resolveAutoSplitTargets(child);
+      if (targets.length === 0) return;
+
+      autoSplitWidthByTargetRef.current = new Map();
       const { splitLines } = resolveSplitFlags(optionsRef.current?.type);
 
       const handleResize = () => {
-        const currentWidth = target.offsetWidth;
-        if (currentWidth === lastWidth) return;
-        lastWidth = currentWidth;
+        const primaryTarget = targets[0];
+        const measuredWidth =
+          primaryTarget &&
+          autoSplitWidthByTargetRef.current.has(primaryTarget)
+            ? autoSplitWidthByTargetRef.current.get(primaryTarget)!
+            : null;
+        const currentWidth =
+          measuredWidth ?? (primaryTarget ? primaryTarget.offsetWidth : 0);
         const lineMeasureWidth = resolveLineMeasureWidth(currentWidth);
 
         if (splitLines && currentLineFingerprintRef.current !== null) {
@@ -2679,22 +2662,32 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
         }, 100);
       };
 
-      resizeObserverRef.current = new ResizeObserver(() => {
-        if (skipFirst) {
-          skipFirst = false;
-          return;
-        }
+      resizeObserverRef.current = new ResizeObserver((entries) => {
+        const changed = entries.some((entry) => {
+          if (!(entry.target instanceof HTMLElement)) return false;
+          const nextWidth = getObservedWidth(entry, entry.target);
+          if (nextWidth === null) return false;
+          return recordWidthChange(
+            autoSplitWidthByTargetRef.current,
+            entry.target,
+            nextWidth
+          );
+        });
+
+        if (!changed) return;
         handleResize();
       });
 
-      resizeObserverRef.current.observe(target);
-      lastWidth = target.offsetWidth;
+      targets.forEach((target) => {
+        resizeObserverRef.current!.observe(target);
+      });
 
       return () => {
         if (resizeObserverRef.current) {
           resizeObserverRef.current.disconnect();
           resizeObserverRef.current = null;
         }
+        autoSplitWidthByTargetRef.current = new Map();
         if (resizeTimerRef.current) {
           clearTimeout(resizeTimerRef.current);
           resizeTimerRef.current = null;

@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 
 test.describe("Kerning Compensation", () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto("/test-page.html");
+    await page.goto("/e2e/test-page.html");
 
     // Wait for fonts to be ready
     await page.waitForFunction(() => window.fontsReady === true);

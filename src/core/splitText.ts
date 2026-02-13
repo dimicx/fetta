@@ -9,6 +9,11 @@ import {
   clearKerningCompensation,
   querySplitWords,
 } from "../internal/kerningUpkeep";
+import {
+  getObservedWidth,
+  recordWidthChange,
+  resolveAutoSplitTargets,
+} from "../internal/autoSplitResize";
 
 /** Animation object shape used by Motion's `animate` return value. */
 export type FinishedAnimation = {
@@ -1652,7 +1657,7 @@ export function splitText(
   let kerningObserver: ResizeObserver | null = null;
   let kerningAnimationFrame: number | null = null;
   let removeKerningResizeListener: (() => void) | null = null;
-  let lastWidth: number | null = null;
+  let autoSplitWidthByTarget = new Map<HTMLElement, number>();
   let lastKerningStyleKey: string | null = null;
 
   // Store current split result (needed for autoSplit)
@@ -1740,29 +1745,6 @@ export function splitText(
     lastKerningStyleKey = buildKerningStyleKey(getComputedStyle(element));
   }
 
-  const resolveAutoSplitTarget = (): HTMLElement | null => {
-    let target = element.parentElement;
-    if (!target) return null;
-
-    if (
-      target.dataset.fettaAutoSplitWrapper === "true" &&
-      target.parentElement instanceof HTMLElement
-    ) {
-      target = target.parentElement;
-    } else if (target.parentElement instanceof HTMLElement) {
-      // In vanilla/imparative usage, immediate parent can be shrink-wrapped
-      // by the currently split lines and miss growth events. Escalate one level
-      // when parent width tracks the split element width.
-      const targetWidth = target.getBoundingClientRect().width;
-      const elementWidth = element.getBoundingClientRect().width;
-      if (Math.abs(targetWidth - elementWidth) < 0.5) {
-        target = target.parentElement;
-      }
-    }
-
-    return target;
-  };
-
   const resolveLineMeasureWidth = (fallbackWidth: number): number => {
     const elementWidth = element.getBoundingClientRect().width;
     if (Number.isFinite(elementWidth) && elementWidth > 0) {
@@ -1849,6 +1831,7 @@ export function splitText(
       autoSplitObserver.disconnect();
       autoSplitObserver = null;
     }
+    autoSplitWidthByTarget = new Map<HTMLElement, number>();
     if (kerningObserver) {
       kerningObserver.disconnect();
       kerningObserver = null;
@@ -1982,15 +1965,13 @@ export function splitText(
 
   // Setup autoSplit if enabled
   if (autoSplit) {
-    const target = resolveAutoSplitTarget();
+    const targets = resolveAutoSplitTargets(element);
 
-    if (!target) {
+    if (targets.length === 0) {
       console.warn(
         "SplitText: autoSplit enabled but no parent element found. AutoSplit will not work."
       );
     } else {
-      let skipFirst = true;
-
       const handleResize = () => {
         if (!isActive) return;
 
@@ -2000,9 +1981,13 @@ export function splitText(
           return;
         }
 
-        const currentWidth = target.offsetWidth;
-        if (currentWidth === lastWidth) return;
-        lastWidth = currentWidth;
+        const fallbackTarget = targets[0];
+        const measuredWidth =
+          fallbackTarget && autoSplitWidthByTarget.has(fallbackTarget)
+            ? autoSplitWidthByTarget.get(fallbackTarget)!
+            : null;
+        const currentWidth =
+          measuredWidth ?? (fallbackTarget ? fallbackTarget.offsetWidth : 0);
 
         if (splitLines) {
           const lineMeasureWidth = resolveLineMeasureWidth(currentWidth);
@@ -2020,11 +2005,19 @@ export function splitText(
         runFullResplit();
       };
 
-      autoSplitObserver = new ResizeObserver(() => {
-        if (skipFirst) {
-          skipFirst = false;
-          return;
-        }
+      autoSplitObserver = new ResizeObserver((entries) => {
+        const changed = entries.some((entry) => {
+          if (!(entry.target instanceof HTMLElement)) return false;
+          const nextWidth = getObservedWidth(entry, entry.target);
+          if (nextWidth === null) return false;
+          return recordWidthChange(
+            autoSplitWidthByTarget,
+            entry.target,
+            nextWidth
+          );
+        });
+
+        if (!changed) return;
 
         if (autoSplitDebounceTimer) {
           clearTimeout(autoSplitDebounceTimer);
@@ -2032,8 +2025,9 @@ export function splitText(
         autoSplitDebounceTimer = setTimeout(handleResize, 100);
       });
 
-      autoSplitObserver.observe(target);
-      lastWidth = target.offsetWidth;
+      targets.forEach((target) => {
+        autoSplitObserver!.observe(target);
+      });
     }
   }
 

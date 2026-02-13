@@ -18,7 +18,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: "npx serve e2e -p 5173",
+    command: "npx serve . -p 5173",
     url: "http://localhost:5173",
     reuseExistingServer: !process.env.CI,
   },

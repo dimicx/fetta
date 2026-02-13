@@ -6,13 +6,41 @@ describe("splitText resize behavior", () => {
   let container: HTMLDivElement;
   let parentElement: HTMLDivElement;
 
-  const getObservedTarget = (): HTMLElement => {
-    const observer = getLastResizeObserver();
-    const target = observer ? Array.from(observer.elements)[0] : null;
-    if (!(target instanceof HTMLElement)) {
+  const getObservedTargets = (): HTMLElement[] => {
+    const observer = getAutoSplitObserver();
+    const targets = observer
+      ? Array.from(observer.elements).filter(
+          (target): target is HTMLElement => target instanceof HTMLElement
+        )
+      : [];
+    if (targets.length === 0) {
       throw new Error("Expected autoSplit observer target");
     }
+    return targets;
+  };
+
+  const getPrimaryObservedTarget = (): HTMLElement => {
+    const [target] = getObservedTargets();
+    if (!(target instanceof HTMLElement)) {
+      throw new Error("Expected primary autoSplit observer target");
+    }
     return target;
+  };
+
+  const triggerResize = (
+    observer: NonNullable<ReturnType<typeof getLastResizeObserver>>,
+    target: HTMLElement,
+    width: number
+  ) => {
+    observer.trigger([{ target, contentRect: createRect(width) }]);
+  };
+
+  const getAutoSplitObserver = () => {
+    const observer = getLastResizeObserver();
+    if (!observer) {
+      throw new Error("Expected autoSplit ResizeObserver");
+    }
+    return observer;
   };
 
   const createRect = (width: number): DOMRect =>
@@ -51,10 +79,80 @@ describe("splitText resize behavior", () => {
 
     splitText(element, { autoSplit: true });
 
-    const observer = getLastResizeObserver();
+    const observer = getAutoSplitObserver();
     expect(observer).not.toBeNull();
-    expect(observer?.elements.size).toBe(1);
-    expect(getObservedTarget()).toBe(container);
+    const targets = getObservedTargets();
+    expect(targets).toContain(parentElement);
+    expect(targets).toContain(container);
+  });
+
+  it("triggers autoSplit when the immediate parent changes width", () => {
+    const element = document.createElement("p");
+    element.textContent = "Hello World";
+    parentElement.appendChild(element);
+
+    const onResplit = vi.fn();
+    splitText(element, { autoSplit: true, type: "chars,words", onResplit });
+
+    const observer = getAutoSplitObserver();
+    const targets = getObservedTargets();
+    const parentTarget = targets.find((target) => target === parentElement);
+    expect(parentTarget).toBe(parentElement);
+
+    triggerResize(observer, parentElement, 300);
+    triggerResize(observer, parentElement, 360);
+
+    vi.advanceTimersByTime(100);
+    vi.runAllTimers();
+
+    expect(onResplit).toHaveBeenCalledTimes(1);
+  });
+
+  it("triggers autoSplit when the promoted ancestor changes width", () => {
+    const element = document.createElement("p");
+    element.textContent = "Hello World";
+    parentElement.appendChild(element);
+
+    const onResplit = vi.fn();
+    splitText(element, { autoSplit: true, type: "chars,words", onResplit });
+
+    const observer = getAutoSplitObserver();
+    const targets = getObservedTargets();
+    const ancestorTarget = targets.find((target) => target === container);
+    expect(ancestorTarget).toBe(container);
+
+    triggerResize(observer, container, 420);
+    triggerResize(observer, container, 500);
+
+    vi.advanceTimersByTime(100);
+    vi.runAllTimers();
+
+    expect(onResplit).toHaveBeenCalledTimes(1);
+  });
+
+  it("triggers autoSplit on subpixel width changes", () => {
+    const element = document.createElement("p");
+    element.textContent = "Hello World";
+    parentElement.appendChild(element);
+
+    const onResplit = vi.fn();
+    splitText(element, { autoSplit: true, type: "chars,words", onResplit });
+
+    const observer = getAutoSplitObserver();
+    const target = getPrimaryObservedTarget();
+    Object.defineProperty(target, "offsetWidth", {
+      value: 300,
+      writable: true,
+      configurable: true,
+    });
+
+    triggerResize(observer, target, 300.1);
+    triggerResize(observer, target, 300.6);
+
+    vi.advanceTimersByTime(100);
+    vi.runAllTimers();
+
+    expect(onResplit).toHaveBeenCalledTimes(1);
   });
 
   it("sets up kerning upkeep observer when autoSplit is false", () => {
@@ -77,13 +175,14 @@ describe("splitText resize behavior", () => {
     const onResplit = vi.fn();
     splitText(element, { autoSplit: true, onResplit });
 
-    const observer = getLastResizeObserver();
+    const observer = getAutoSplitObserver();
     expect(observer).not.toBeNull();
+    const target = getPrimaryObservedTarget();
 
     // Trigger multiple rapid resize events
-    observer!.trigger([{ contentRect: { width: 100 } }]);
-    observer!.trigger([{ contentRect: { width: 150 } }]);
-    observer!.trigger([{ contentRect: { width: 200 } }]);
+    triggerResize(observer!, target, 100);
+    triggerResize(observer!, target, 150);
+    triggerResize(observer!, target, 200);
 
     // onResplit should not have been called yet (debounce pending)
     expect(onResplit).not.toHaveBeenCalled();
@@ -103,10 +202,11 @@ describe("splitText resize behavior", () => {
     const onResplit = vi.fn();
     splitText(element, { autoSplit: true, onResplit });
 
-    const observer = getLastResizeObserver();
+    const observer = getAutoSplitObserver();
+    const target = getPrimaryObservedTarget();
 
     // First trigger should be skipped
-    observer!.trigger([{ contentRect: { width: 100 } }]);
+    triggerResize(observer!, target, 100);
 
     vi.advanceTimersByTime(100);
     vi.runAllTimers();
@@ -122,8 +222,8 @@ describe("splitText resize behavior", () => {
 
     const result = splitText(element, { autoSplit: true });
 
-    const observer = getLastResizeObserver();
-    expect(observer?.elements.size).toBe(1);
+    const observer = getAutoSplitObserver();
+    expect(observer?.elements.size).toBeGreaterThan(0);
 
     // Revert (which calls dispose)
     result.revert();
@@ -156,18 +256,18 @@ describe("splitText resize behavior", () => {
     const onResplit = vi.fn();
     splitText(element, { autoSplit: true, onResplit });
 
-    const observer = getLastResizeObserver();
-    const target = getObservedTarget();
+    const observer = getAutoSplitObserver();
+    const target = getPrimaryObservedTarget();
     Object.defineProperty(target, "offsetWidth", {
       value: 500,
       writable: true,
     });
 
     // Skip first event
-    observer!.trigger([{ contentRect: { width: 500 } }]);
+    triggerResize(observer!, target, 500);
 
     // Second event with same width
-    observer!.trigger([{ contentRect: { width: 500 } }]);
+    triggerResize(observer!, target, 500);
 
     vi.advanceTimersByTime(100);
     vi.runAllTimers();
@@ -210,19 +310,21 @@ describe("splitText resize behavior", () => {
 
     splitText(element, { autoSplit: true, type: "chars,words,lines" });
 
-    const observer = getLastResizeObserver();
+    const observer = getAutoSplitObserver();
     expect(observer).not.toBeNull();
-    expect(getObservedTarget()).toBe(parentElement);
+    const targets = getObservedTargets();
+    expect(targets).toContain(parentElement);
+    const target = parentElement;
 
     // First callback is skipped by design.
-    observer!.trigger([{ contentRect: { width: 400 } }]);
+    triggerResize(observer!, target, 400);
 
     Object.defineProperty(parentElement, "offsetWidth", {
       value: 420,
       writable: true,
       configurable: true,
     });
-    observer!.trigger([{ contentRect: { width: 420 } }]);
+    triggerResize(observer!, target, 420);
 
     vi.advanceTimersByTime(100);
     vi.runAllTimers();
@@ -243,11 +345,11 @@ describe("splitText resize behavior", () => {
     const onResplit = vi.fn();
     splitText(element, { autoSplit: true, onResplit });
 
-    const observer = getLastResizeObserver();
-    const target = getObservedTarget();
+    const observer = getAutoSplitObserver();
+    const target = getPrimaryObservedTarget();
 
     // Skip first event
-    observer!.trigger([{ contentRect: { width: 100 } }]);
+    triggerResize(observer!, target, 100);
 
     // Remove element from DOM
     parentElement.removeChild(element);
@@ -257,7 +359,7 @@ describe("splitText resize behavior", () => {
       value: 600,
       writable: true,
     });
-    observer!.trigger([{ contentRect: { width: 600 } }]);
+    triggerResize(observer!, target, 600);
 
     vi.advanceTimersByTime(100);
     vi.runAllTimers();
@@ -362,8 +464,8 @@ describe("splitText resize behavior", () => {
       onResplit,
     });
 
-    const observer = getLastResizeObserver();
-    const target = getObservedTarget();
+    const observer = getAutoSplitObserver();
+    const target = getPrimaryObservedTarget();
     Object.defineProperty(target, "offsetWidth", {
       value: 320,
       writable: true,
@@ -371,14 +473,14 @@ describe("splitText resize behavior", () => {
     expect(observer).not.toBeNull();
 
     // Skip first observer callback by design.
-    observer!.trigger([{ contentRect: { width: 320 } }]);
+    triggerResize(observer!, target, 320);
 
     // Trigger actual resize with different width while keeping the same one-line content.
     Object.defineProperty(target, "offsetWidth", {
       value: 420,
       writable: true,
     });
-    observer!.trigger([{ contentRect: { width: 420 } }]);
+    triggerResize(observer!, target, 420);
 
     vi.advanceTimersByTime(100);
     vi.runAllTimers();

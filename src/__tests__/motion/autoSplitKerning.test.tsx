@@ -88,7 +88,8 @@ async function triggerTypographyResize(element: HTMLElement, fontSize: string) {
 
 async function triggerAutoSplitWidthResize(
   childElement: HTMLElement,
-  width: number
+  width: number,
+  targetIndex = 0
 ) {
   const observers = getResizeObservers();
   const widthObserver = observers.find((observer) =>
@@ -99,14 +100,15 @@ async function triggerAutoSplitWidthResize(
         entry.contains(childElement)
     )
   );
-  const target = widthObserver
-    ? Array.from(widthObserver.elements).find(
+  const targets = widthObserver
+    ? Array.from(widthObserver.elements).filter(
         (entry): entry is HTMLElement =>
           entry instanceof HTMLElement &&
           entry !== childElement &&
           entry.contains(childElement)
       )
-    : null;
+    : [];
+  const target = targets[targetIndex] ?? null;
   expect(widthObserver).toBeTruthy();
   expect(target).toBeTruthy();
 
@@ -117,12 +119,34 @@ async function triggerAutoSplitWidthResize(
       writable: true,
       configurable: true,
     });
-    widthObserver!.trigger([{ target: target! }]);
+    widthObserver!.trigger([{ target: target!, contentRect: createRect(width) }]);
     vi.advanceTimersByTime(200);
     vi.runAllTimers();
     await Promise.resolve();
   });
   vi.useRealTimers();
+}
+
+function getAutoSplitTargets(childElement: HTMLElement): HTMLElement[] {
+  const observers = getResizeObservers();
+  const widthObserver = observers.find((observer) =>
+    Array.from(observer.elements).some(
+      (entry) =>
+        entry instanceof HTMLElement &&
+        entry !== childElement &&
+        entry.contains(childElement)
+    )
+  );
+  expect(widthObserver).toBeTruthy();
+
+  return widthObserver
+    ? Array.from(widthObserver.elements).filter(
+        (entry): entry is HTMLElement =>
+          entry instanceof HTMLElement &&
+          entry !== childElement &&
+          entry.contains(childElement)
+      )
+    : [];
 }
 
 describe("SplitText motion autoSplit kerning parity", () => {
@@ -287,6 +311,79 @@ describe("SplitText motion autoSplit kerning parity", () => {
     const firstLineAfter = container.querySelector(".split-line");
     expect(firstLineAfter).toBe(firstLineBefore);
     expect(onResplit).not.toHaveBeenCalled();
+  });
+
+  it("full-resplits when the immediate parent width changes", async () => {
+    const onResplit = vi.fn();
+    const { container } = render(
+      <SplitText autoSplit options={{ type: "chars,words" }} onResplit={onResplit}>
+        <p style={{ fontSize: "20px" }}>Hello World</p>
+      </SplitText>
+    );
+
+    await waitFor(() => {
+      expect(container.querySelectorAll(".split-char").length).toBeGreaterThan(0);
+    });
+
+    const childElement = container.querySelector("p") as HTMLElement | null;
+    expect(childElement).toBeTruthy();
+    const targets = getAutoSplitTargets(childElement!);
+    expect(targets.length).toBeGreaterThan(1);
+
+    await triggerAutoSplitWidthResize(childElement!, 320, 0);
+    await triggerAutoSplitWidthResize(childElement!, 420, 0);
+
+    await waitFor(() => {
+      expect(onResplit).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("full-resplits when the promoted ancestor width changes", async () => {
+    const onResplit = vi.fn();
+    const { container } = render(
+      <SplitText autoSplit options={{ type: "chars,words" }} onResplit={onResplit}>
+        <p style={{ fontSize: "20px" }}>Hello World</p>
+      </SplitText>
+    );
+
+    await waitFor(() => {
+      expect(container.querySelectorAll(".split-char").length).toBeGreaterThan(0);
+    });
+
+    const childElement = container.querySelector("p") as HTMLElement | null;
+    expect(childElement).toBeTruthy();
+    const targets = getAutoSplitTargets(childElement!);
+    expect(targets.length).toBeGreaterThan(1);
+
+    await triggerAutoSplitWidthResize(childElement!, 320, 1);
+    await triggerAutoSplitWidthResize(childElement!, 420, 1);
+
+    await waitFor(() => {
+      expect(onResplit).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("full-resplits on subpixel width changes", async () => {
+    const onResplit = vi.fn();
+    const { container } = render(
+      <SplitText autoSplit options={{ type: "chars,words" }} onResplit={onResplit}>
+        <p style={{ fontSize: "20px" }}>Hello World</p>
+      </SplitText>
+    );
+
+    await waitFor(() => {
+      expect(container.querySelectorAll(".split-char").length).toBeGreaterThan(0);
+    });
+
+    const childElement = container.querySelector("p") as HTMLElement | null;
+    expect(childElement).toBeTruthy();
+
+    await triggerAutoSplitWidthResize(childElement!, 300.1, 0);
+    await triggerAutoSplitWidthResize(childElement!, 300.7, 0);
+
+    await waitFor(() => {
+      expect(onResplit).toHaveBeenCalledTimes(1);
+    });
   });
 
   it("uses rendered child width for line-mode resize probes when target width differs", async () => {
