@@ -101,7 +101,10 @@ describe("splitText", () => {
       element.textContent = "Hello";
       container.appendChild(element);
 
-      splitText(element, { type: "chars", isolateKerningMeasurement: false });
+      splitText(
+        element,
+        { type: "chars", isolateKerningMeasurement: false } as any
+      );
 
       const roots = document.querySelectorAll('[data-fetta-kerning-root="true"]');
       expect(roots).toHaveLength(0);

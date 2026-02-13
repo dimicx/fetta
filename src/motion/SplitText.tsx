@@ -70,10 +70,11 @@ export interface SplitTextOptions {
    * Kerning is naturally lost when splitting into inline-block spans.
    * Use this if you prefer no compensation over imperfect Safari compensation. */
   disableKerning?: boolean;
-  /** Measure kerning in a document-level isolated root to avoid ancestor transform effects.
-   * Disable to use legacy in-container measurement behavior. */
-  isolateKerningMeasurement?: boolean;
 }
+
+type InternalSplitTextOptions = SplitTextOptions & {
+  isolateKerningMeasurement?: boolean;
+};
 
 interface ScrollPropOptions {
   /** Scroll offsets. Default: Motion's default ["start end", "end start"] */
@@ -1293,7 +1294,7 @@ function buildSplitSignature(
   initialStyles: InitialStyles | undefined,
   initialClasses: InitialClasses | undefined
 ): string {
-  const opt = options ?? {};
+  const opt = (options ?? {}) as InternalSplitTextOptions;
   const signature = {
     type: opt.type ?? "",
     charClass: opt.charClass ?? "",
@@ -2432,7 +2433,8 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
       const charClass = optionsRef.current?.charClass ?? "split-char";
       const mask = optionsRef.current?.mask;
       const isolateKerningMeasurement =
-        optionsRef.current?.isolateKerningMeasurement;
+        (optionsRef.current as InternalSplitTextOptions | undefined)
+          ?.isolateKerningMeasurement;
       const readKerningStyleSnapshot = (element: HTMLElement) =>
         `${buildKerningStyleKey(getComputedStyle(element))}|${
           element.getAttribute("style") ?? ""

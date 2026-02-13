@@ -94,9 +94,6 @@ export interface SplitTextOptions {
    * Kerning is naturally lost when splitting into inline-block spans.
    * Use this if you prefer no compensation over imperfect Safari compensation. */
   disableKerning?: boolean;
-  /** Measure kerning in a document-level isolated root to avoid ancestor transform effects.
-   * Disable to use legacy in-container measurement behavior. */
-  isolateKerningMeasurement?: boolean;
   /** Apply initial inline styles to elements after split (and after kerning compensation).
    * Can be a static style object or a function that receives (element, index). */
   initialStyles?: {
@@ -112,6 +109,11 @@ export interface SplitTextOptions {
     lines?: string;
   };
 }
+
+// Internal/debug-only options not exposed in the public API surface.
+type InternalSplitTextOptions = SplitTextOptions & {
+  isolateKerningMeasurement?: boolean;
+};
 
 type CSSVariableStyles = {
   [K in `--${string}`]?: string | number;
@@ -187,7 +189,10 @@ export interface SplitTextData {
  */
 export function splitTextData(
   element: HTMLElement,
-  {
+  rawOptions: SplitTextOptions = {}
+): SplitTextData {
+  const options = rawOptions as InternalSplitTextOptions;
+  const {
     type = "chars,words,lines",
     charClass = "split-char",
     wordClass = "split-word",
@@ -195,11 +200,11 @@ export function splitTextData(
     mask,
     propIndex = false,
     disableKerning = false,
-    isolateKerningMeasurement = true,
     initialStyles,
     initialClasses,
-  }: SplitTextOptions = {}
-): SplitTextData {
+  } = options;
+  const isolateKerningMeasurement = options.isolateKerningMeasurement !== false;
+
   if (!(element instanceof HTMLElement)) {
     throw new Error("splitTextData: element must be an HTMLElement");
   }
@@ -1595,7 +1600,10 @@ function buildLineFingerprintFromData(data: SplitTextData): string {
  */
 export function splitText(
   element: HTMLElement,
-  {
+  rawOptions: SplitTextOptions = {}
+): SplitTextResult {
+  const options = rawOptions as InternalSplitTextOptions;
+  const {
     type = "chars,words,lines",
     charClass = "split-char",
     wordClass = "split-word",
@@ -1607,11 +1615,11 @@ export function splitText(
     revertOnComplete = false,
     propIndex = false,
     disableKerning = false,
-    isolateKerningMeasurement = true,
     initialStyles,
     initialClasses,
-  }: SplitTextOptions = {}
-): SplitTextResult {
+  } = options;
+  const isolateKerningMeasurement = options.isolateKerningMeasurement !== false;
+
   // Validation
   if (!(element instanceof HTMLElement)) {
     throw new Error("splitText: element must be an HTMLElement");
@@ -1791,7 +1799,7 @@ export function splitText(
         isolateKerningMeasurement,
         initialStyles,
         initialClasses,
-      });
+      } as InternalSplitTextOptions);
       return buildLineFingerprintFromData(probeData);
     } finally {
       probeHost.remove();

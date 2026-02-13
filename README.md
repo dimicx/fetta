@@ -91,7 +91,6 @@ const result = splitText(element, options);
 | `revertOnComplete` | `boolean` | `false` | Auto-revert when animation completes |
 | `propIndex` | `boolean` | `false` | Add CSS custom properties: `--char-index`, `--word-index`, `--line-index` |
 | `disableKerning` | `boolean` | `false` | Skip kerning compensation (no margin adjustments) |
-| `isolateKerningMeasurement` | `boolean` | `true` | Measure kerning in a document-level isolated root to avoid ancestor transform effects |
 | `initialStyles` | `object` | — | Apply initial inline styles to chars/words/lines after split. Values can be objects or `(el, index) => object` functions |
 | `initialClasses` | `object` | — | Apply initial CSS classes to chars/words/lines. Values are strings |
 
@@ -167,7 +166,7 @@ import { SplitText } from 'fetta/react';
 | `ref` | `Ref<HTMLElement>` | — | Ref to container element |
 | `onSplit` | `(result) => CallbackReturn` | — | Called after text is split |
 | `onResplit` | `(result) => void` | — | Called when autoSplit/full-resplit replaces split output elements |
-| `options` | `SplitTextOptions` | — | Split options (type, classes, mask, propIndex, disableKerning, isolateKerningMeasurement) |
+| `options` | `SplitTextOptions` | — | Split options (type, classes, mask, propIndex, disableKerning) |
 | `autoSplit` | `boolean` | `false` | Re-split on container resize |
 | `waitForFonts` | `boolean` | `true` | Wait for `document.fonts.ready` before splitting (recommended for stable kerning). Set `false` for immediate split. |
 | `revertOnComplete` | `boolean` | `false` | Revert after animation completes |
@@ -190,7 +189,6 @@ import { SplitText } from 'fetta/react';
 | `mask` | `"lines" \| "words" \| "chars"` | — | Wrap elements in `overflow: clip` mask containers |
 | `propIndex` | `boolean` | `false` | Add CSS index variables (`--char-index`, `--word-index`, `--line-index`) |
 | `disableKerning` | `boolean` | `false` | Skip kerning compensation (no margin adjustments) |
-| `isolateKerningMeasurement` | `boolean` | `true` | Measure kerning in a document-level isolated root |
 
 #### Callback Signature
 
