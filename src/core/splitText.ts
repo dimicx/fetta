@@ -1744,6 +1744,14 @@ export function splitText(
     return target;
   };
 
+  const resolveLineMeasureWidth = (fallbackWidth: number): number => {
+    const elementWidth = element.getBoundingClientRect().width;
+    if (Number.isFinite(elementWidth) && elementWidth > 0) {
+      return elementWidth;
+    }
+    return Math.max(1, fallbackWidth);
+  };
+
   const measureLineFingerprintForWidth = (width: number): string | null => {
     if (!splitLines) return null;
     if (!element.parentElement) return null;
@@ -1978,7 +1986,10 @@ export function splitText(
         lastWidth = currentWidth;
 
         if (splitLines) {
-          const nextLineFingerprint = measureLineFingerprintForWidth(currentWidth);
+          const lineMeasureWidth = resolveLineMeasureWidth(currentWidth);
+          const nextLineFingerprint = measureLineFingerprintForWidth(
+            lineMeasureWidth
+          );
           if (
             nextLineFingerprint !== null &&
             nextLineFingerprint === currentLineFingerprint

@@ -1906,6 +1906,17 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
       return buildLineFingerprintFromData(probeData);
     }, [buildSplitDataFromProbe]);
 
+    const resolveLineMeasureWidth = useCallback((fallbackWidth: number) => {
+      const observedChild = containerRef.current?.firstElementChild;
+      if (observedChild instanceof HTMLElement) {
+        const childWidth = observedChild.getBoundingClientRect().width;
+        if (Number.isFinite(childWidth) && childWidth > 0) {
+          return childWidth;
+        }
+      }
+      return Math.max(1, fallbackWidth);
+    }, []);
+
     // Initial split
     useEffect(() => {
       if (!childElement) return;
@@ -2451,7 +2462,7 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
                 }
               }
             }
-            resplitWidth = target.offsetWidth;
+            resplitWidth = resolveLineMeasureWidth(target.offsetWidth);
           }
           measureAndSetData(true, resplitWidth);
           return;
@@ -2528,7 +2539,13 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
           removeWindowResizeListenerRef.current = null;
         }
       };
-    }, [autoSplit, childTreeVersion, data, measureAndSetData]);
+    }, [
+      autoSplit,
+      childTreeVersion,
+      data,
+      measureAndSetData,
+      resolveLineMeasureWidth,
+    ]);
 
     useEffect(() => {
       if (!needsViewport) {
@@ -2639,9 +2656,12 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
         const currentWidth = target.offsetWidth;
         if (currentWidth === lastWidth) return;
         lastWidth = currentWidth;
+        const lineMeasureWidth = resolveLineMeasureWidth(currentWidth);
 
         if (splitLines && currentLineFingerprintRef.current !== null) {
-          const nextFingerprint = measureLineFingerprintForWidth(currentWidth);
+          const nextFingerprint = measureLineFingerprintForWidth(
+            lineMeasureWidth
+          );
           if (
             nextFingerprint !== null &&
             nextFingerprint === currentLineFingerprintRef.current
@@ -2655,7 +2675,10 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
         }
         resizeTimerRef.current = setTimeout(() => {
           pendingFullResplitRef.current = true;
-          measureAndSetData(true, currentWidth);
+          measureAndSetData(
+            true,
+            splitLines ? lineMeasureWidth : currentWidth
+          );
         }, 100);
       };
 
@@ -2680,7 +2703,13 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
           resizeTimerRef.current = null;
         }
       };
-    }, [autoSplit, data, measureAndSetData, measureLineFingerprintForWidth]);
+    }, [
+      autoSplit,
+      data,
+      measureAndSetData,
+      measureLineFingerprintForWidth,
+      resolveLineMeasureWidth,
+    ]);
 
     useEffect(() => {
       if (!splitResultRef.current) return;

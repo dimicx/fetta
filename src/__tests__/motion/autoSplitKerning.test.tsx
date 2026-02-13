@@ -48,6 +48,19 @@ vi.mock("motion/react", async () => {
 
 import { SplitText } from "../../motion/SplitText";
 
+const createRect = (width: number): DOMRect =>
+  ({
+    top: 0,
+    right: width,
+    bottom: 20,
+    left: 0,
+    width,
+    height: 20,
+    x: 0,
+    y: 0,
+    toJSON: () => ({}),
+  }) as DOMRect;
+
 async function triggerTypographyResize(element: HTMLElement, fontSize: string) {
   const prevFontSize = getComputedStyle(element).fontSize;
   await act(async () => {
@@ -274,6 +287,53 @@ describe("SplitText motion autoSplit kerning parity", () => {
     const firstLineAfter = container.querySelector(".split-line");
     expect(firstLineAfter).toBe(firstLineBefore);
     expect(onResplit).not.toHaveBeenCalled();
+  });
+
+  it("uses rendered child width for line-mode resize probes when target width differs", async () => {
+    const { container } = render(
+      <SplitText autoSplit options={{ type: "chars,words,lines" }}>
+        <p style={{ fontSize: "20px" }}>
+          This text reflows naturally at any width.
+        </p>
+      </SplitText>
+    );
+
+    await waitFor(() => {
+      expect(container.querySelectorAll(".split-line").length).toBeGreaterThan(0);
+    });
+
+    const childElement = container.querySelector("p") as HTMLElement | null;
+    expect(childElement).toBeTruthy();
+    const measuredHost = childElement?.parentElement;
+    expect(measuredHost).toBeTruthy();
+
+    const originalAppendChild = measuredHost!.appendChild.bind(measuredHost);
+    const probeWidths: string[] = [];
+    const appendSpy = vi
+      .spyOn(measuredHost!, "appendChild")
+      .mockImplementation((node: Node) => {
+        if (
+          node instanceof HTMLElement &&
+          node.dataset.fettaAutoSplitProbe === "true"
+        ) {
+          probeWidths.push(node.style.width);
+        }
+        return originalAppendChild(node);
+      });
+
+    const childRectSpy = vi
+      .spyOn(childElement!, "getBoundingClientRect")
+      .mockReturnValue(createRect(388));
+
+    // First callback is skipped by design.
+    await triggerAutoSplitWidthResize(childElement!, 320);
+    await triggerAutoSplitWidthResize(childElement!, 420);
+
+    expect(probeWidths.length).toBeGreaterThan(0);
+    expect(probeWidths[probeWidths.length - 1]).toBe("388px");
+
+    childRectSpy.mockRestore();
+    appendSpy.mockRestore();
   });
 
   it("keeps onSplit initial-only across full resplits", async () => {

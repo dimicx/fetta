@@ -15,6 +15,19 @@ describe("splitText resize behavior", () => {
     return target;
   };
 
+  const createRect = (width: number): DOMRect =>
+    ({
+      top: 0,
+      right: width,
+      bottom: 20,
+      left: 0,
+      width,
+      height: 20,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    }) as DOMRect;
+
   beforeEach(() => {
     vi.useFakeTimers();
     resetResizeObserver();
@@ -161,6 +174,65 @@ describe("splitText resize behavior", () => {
 
     // onResplit should not be called since width didn't change
     expect(onResplit).not.toHaveBeenCalled();
+  });
+
+  it("measures line fingerprints using rendered element width when target width differs", () => {
+    const element = document.createElement("p");
+    element.textContent = "This text reflows naturally at any width.";
+    parentElement.appendChild(element);
+
+    Object.defineProperty(parentElement, "offsetWidth", {
+      value: 400,
+      writable: true,
+      configurable: true,
+    });
+
+    const parentRectSpy = vi
+      .spyOn(parentElement, "getBoundingClientRect")
+      .mockReturnValue(createRect(420));
+    const elementRectSpy = vi
+      .spyOn(element, "getBoundingClientRect")
+      .mockReturnValue(createRect(388));
+
+    const originalAppendChild = parentElement.appendChild.bind(parentElement);
+    const probeWidths: string[] = [];
+    const appendSpy = vi
+      .spyOn(parentElement, "appendChild")
+      .mockImplementation((node: Node) => {
+        if (
+          node instanceof HTMLElement &&
+          node.dataset.fettaAutoSplitProbe === "true"
+        ) {
+          probeWidths.push(node.style.width);
+        }
+        return originalAppendChild(node);
+      });
+
+    splitText(element, { autoSplit: true, type: "chars,words,lines" });
+
+    const observer = getLastResizeObserver();
+    expect(observer).not.toBeNull();
+    expect(getObservedTarget()).toBe(parentElement);
+
+    // First callback is skipped by design.
+    observer!.trigger([{ contentRect: { width: 400 } }]);
+
+    Object.defineProperty(parentElement, "offsetWidth", {
+      value: 420,
+      writable: true,
+      configurable: true,
+    });
+    observer!.trigger([{ contentRect: { width: 420 } }]);
+
+    vi.advanceTimersByTime(100);
+    vi.runAllTimers();
+
+    expect(probeWidths.length).toBeGreaterThan(0);
+    expect(probeWidths[probeWidths.length - 1]).toBe("388px");
+
+    appendSpy.mockRestore();
+    elementRectSpy.mockRestore();
+    parentRectSpy.mockRestore();
   });
 
   it("auto-disposes when element is removed from DOM", () => {
