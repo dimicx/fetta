@@ -13,6 +13,7 @@ import {
 import {
   getObservedWidth,
   recordWidthChange,
+  resolveAutoSplitWidth,
   resolveAutoSplitTargets,
 } from "../internal/autoSplitResize";
 import type { InitialStyles, InitialClasses } from "../internal/initialStyles";
@@ -1734,6 +1735,7 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
     const lastKerningStyleKeyRef = useRef<string | null>(null);
     const currentLineFingerprintRef = useRef<string | null>(null);
     const pendingFullResplitRef = useRef(false);
+    const autoSplitLastChangedTargetRef = useRef<HTMLElement | null>(null);
     const autoSplitWidthByTargetRef = useRef<Map<HTMLElement, number>>(new Map());
     const splitResultVersionRef = useRef<number>(-1);
     const hasRunOnSplitForCycleRef = useRef(false);
@@ -1762,6 +1764,7 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
       hasRevertedRef.current = false;
       originalHTMLRef.current = null;
       pendingFullResplitRef.current = false;
+      autoSplitLastChangedTargetRef.current = null;
       autoSplitWidthByTargetRef.current = new Map();
       splitResultVersionRef.current = -1;
       hasRunOnSplitForCycleRef.current = false;
@@ -1911,14 +1914,21 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
     }, [buildSplitDataFromProbe]);
 
     const resolveLineMeasureWidth = useCallback((fallbackWidth: number) => {
+      const safeFallbackWidth =
+        Number.isFinite(fallbackWidth) && fallbackWidth > 0
+          ? fallbackWidth
+          : 1;
       const observedChild = containerRef.current?.firstElementChild;
       if (observedChild instanceof HTMLElement) {
         const childWidth = observedChild.getBoundingClientRect().width;
         if (Number.isFinite(childWidth) && childWidth > 0) {
-          return childWidth;
+          // In responsive demos the split child can remain visually constrained by
+          // previously generated line wrappers after growth. When that happens,
+          // fallback container width is a better proxy for expected reflow.
+          return Math.max(childWidth, safeFallbackWidth);
         }
       }
-      return Math.max(1, fallbackWidth);
+      return safeFallbackWidth;
     }, []);
 
     // Initial split
@@ -2446,11 +2456,12 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
           pendingFullResplitRef.current = true;
           let resplitWidth: number | undefined;
           const targets = resolveAutoSplitTargets(currentElement);
-          const primaryTarget = targets[0];
-          if (primaryTarget instanceof HTMLElement) {
-            const measuredWidth =
-              autoSplitWidthByTargetRef.current.get(primaryTarget);
-            const fallbackWidth = measuredWidth ?? primaryTarget.offsetWidth;
+          if (targets.length > 0) {
+            const fallbackWidth = resolveAutoSplitWidth(
+              targets,
+              autoSplitWidthByTargetRef.current,
+              autoSplitLastChangedTargetRef.current
+            );
             resplitWidth = resolveLineMeasureWidth(fallbackWidth);
           }
           measureAndSetData(true, resplitWidth);
@@ -2628,14 +2639,12 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
       const { splitLines } = resolveSplitFlags(optionsRef.current?.type);
 
       const handleResize = () => {
-        const primaryTarget = targets[0];
-        const measuredWidth =
-          primaryTarget &&
-          autoSplitWidthByTargetRef.current.has(primaryTarget)
-            ? autoSplitWidthByTargetRef.current.get(primaryTarget)!
-            : null;
-        const currentWidth =
-          measuredWidth ?? (primaryTarget ? primaryTarget.offsetWidth : 0);
+        const currentWidth = resolveAutoSplitWidth(
+          targets,
+          autoSplitWidthByTargetRef.current,
+          autoSplitLastChangedTargetRef.current
+        );
+        autoSplitLastChangedTargetRef.current = null;
         const lineMeasureWidth = resolveLineMeasureWidth(currentWidth);
 
         if (splitLines && currentLineFingerprintRef.current !== null) {
@@ -2663,18 +2672,26 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
       };
 
       resizeObserverRef.current = new ResizeObserver((entries) => {
-        const changed = entries.some((entry) => {
-          if (!(entry.target instanceof HTMLElement)) return false;
+        let changed = false;
+        let changedTarget: HTMLElement | null = null;
+
+        entries.forEach((entry) => {
+          if (!(entry.target instanceof HTMLElement)) return;
           const nextWidth = getObservedWidth(entry, entry.target);
-          if (nextWidth === null) return false;
-          return recordWidthChange(
+          if (nextWidth === null) return;
+          const didChange = recordWidthChange(
             autoSplitWidthByTargetRef.current,
             entry.target,
             nextWidth
           );
+          if (didChange) {
+            changed = true;
+            changedTarget = entry.target;
+          }
         });
 
         if (!changed) return;
+        autoSplitLastChangedTargetRef.current = changedTarget;
         handleResize();
       });
 
@@ -2687,6 +2704,7 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
           resizeObserverRef.current.disconnect();
           resizeObserverRef.current = null;
         }
+        autoSplitLastChangedTargetRef.current = null;
         autoSplitWidthByTargetRef.current = new Map();
         if (resizeTimerRef.current) {
           clearTimeout(resizeTimerRef.current);

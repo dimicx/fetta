@@ -12,6 +12,7 @@ import {
 import {
   getObservedWidth,
   recordWidthChange,
+  resolveAutoSplitWidth,
   resolveAutoSplitTargets,
 } from "../internal/autoSplitResize";
 
@@ -1746,11 +1747,15 @@ export function splitText(
   }
 
   const resolveLineMeasureWidth = (fallbackWidth: number): number => {
+    const safeFallbackWidth =
+      Number.isFinite(fallbackWidth) && fallbackWidth > 0
+        ? fallbackWidth
+        : 1;
     const elementWidth = element.getBoundingClientRect().width;
     if (Number.isFinite(elementWidth) && elementWidth > 0) {
-      return elementWidth;
+      return Math.max(elementWidth, safeFallbackWidth);
     }
-    return Math.max(1, fallbackWidth);
+    return safeFallbackWidth;
   };
 
   const measureLineFingerprintForWidth = (width: number): string | null => {
@@ -1966,6 +1971,7 @@ export function splitText(
   // Setup autoSplit if enabled
   if (autoSplit) {
     const targets = resolveAutoSplitTargets(element);
+    let lastChangedTarget: HTMLElement | null = null;
 
     if (targets.length === 0) {
       console.warn(
@@ -1981,13 +1987,12 @@ export function splitText(
           return;
         }
 
-        const fallbackTarget = targets[0];
-        const measuredWidth =
-          fallbackTarget && autoSplitWidthByTarget.has(fallbackTarget)
-            ? autoSplitWidthByTarget.get(fallbackTarget)!
-            : null;
-        const currentWidth =
-          measuredWidth ?? (fallbackTarget ? fallbackTarget.offsetWidth : 0);
+        const currentWidth = resolveAutoSplitWidth(
+          targets,
+          autoSplitWidthByTarget,
+          lastChangedTarget
+        );
+        lastChangedTarget = null;
 
         if (splitLines) {
           const lineMeasureWidth = resolveLineMeasureWidth(currentWidth);
@@ -2006,18 +2011,26 @@ export function splitText(
       };
 
       autoSplitObserver = new ResizeObserver((entries) => {
-        const changed = entries.some((entry) => {
-          if (!(entry.target instanceof HTMLElement)) return false;
+        let changed = false;
+        let changedTarget: HTMLElement | null = null;
+
+        entries.forEach((entry) => {
+          if (!(entry.target instanceof HTMLElement)) return;
           const nextWidth = getObservedWidth(entry, entry.target);
-          if (nextWidth === null) return false;
-          return recordWidthChange(
+          if (nextWidth === null) return;
+          const didChange = recordWidthChange(
             autoSplitWidthByTarget,
             entry.target,
             nextWidth
           );
+          if (didChange) {
+            changed = true;
+            changedTarget = entry.target;
+          }
         });
 
         if (!changed) return;
+        lastChangedTarget = changedTarget;
 
         if (autoSplitDebounceTimer) {
           clearTimeout(autoSplitDebounceTimer);

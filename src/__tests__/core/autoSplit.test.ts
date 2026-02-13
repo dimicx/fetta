@@ -276,7 +276,7 @@ describe("splitText resize behavior", () => {
     expect(onResplit).not.toHaveBeenCalled();
   });
 
-  it("measures line fingerprints using rendered element width when target width differs", () => {
+  it("uses effective line probe width when observed target expands", () => {
     const element = document.createElement("p");
     element.textContent = "This text reflows naturally at any width.";
     parentElement.appendChild(element);
@@ -330,7 +330,7 @@ describe("splitText resize behavior", () => {
     vi.runAllTimers();
 
     expect(probeWidths.length).toBeGreaterThan(0);
-    expect(probeWidths[probeWidths.length - 1]).toBe("388px");
+    expect(probeWidths[probeWidths.length - 1]).toBe("420px");
 
     appendSpy.mockRestore();
     elementRectSpy.mockRestore();

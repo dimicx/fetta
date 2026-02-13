@@ -75,3 +75,35 @@ export function recordWidthChange(
   return Math.abs(previousWidth - nextWidth) > epsilon;
 }
 
+/**
+ * Resolve the most relevant width for a re-split pass.
+ * Prefer the last target that reported a meaningful resize when available.
+ */
+export function resolveAutoSplitWidth(
+  targets: HTMLElement[],
+  widthByTarget: Map<HTMLElement, number>,
+  changedTarget?: HTMLElement | null
+): number {
+  const orderedTargets: HTMLElement[] = [];
+  if (changedTarget && targets.includes(changedTarget)) {
+    orderedTargets.push(changedTarget);
+  }
+  for (const target of targets) {
+    if (!orderedTargets.includes(target)) {
+      orderedTargets.push(target);
+    }
+  }
+
+  for (const target of orderedTargets) {
+    const measuredWidth = widthByTarget.get(target);
+    if (typeof measuredWidth === "number" && Number.isFinite(measuredWidth)) {
+      return measuredWidth;
+    }
+    const fallbackWidth = target.offsetWidth;
+    if (Number.isFinite(fallbackWidth)) {
+      return fallbackWidth;
+    }
+  }
+
+  return 0;
+}

@@ -386,7 +386,7 @@ describe("SplitText motion autoSplit kerning parity", () => {
     });
   });
 
-  it("uses rendered child width for line-mode resize probes when target width differs", async () => {
+  it("uses changed ancestor width for line probes when primary width is stale", async () => {
     const { container } = render(
       <SplitText autoSplit options={{ type: "chars,words,lines" }}>
         <p style={{ fontSize: "20px" }}>
@@ -401,6 +401,8 @@ describe("SplitText motion autoSplit kerning parity", () => {
 
     const childElement = container.querySelector("p") as HTMLElement | null;
     expect(childElement).toBeTruthy();
+    const targets = getAutoSplitTargets(childElement!);
+    expect(targets.length).toBeGreaterThan(1);
     const measuredHost = childElement?.parentElement;
     expect(measuredHost).toBeTruthy();
 
@@ -422,12 +424,12 @@ describe("SplitText motion autoSplit kerning parity", () => {
       .spyOn(childElement!, "getBoundingClientRect")
       .mockReturnValue(createRect(388));
 
-    // First callback is skipped by design.
-    await triggerAutoSplitWidthResize(childElement!, 320);
-    await triggerAutoSplitWidthResize(childElement!, 420);
+    // Seed the promoted ancestor target, then trigger its width change.
+    await triggerAutoSplitWidthResize(childElement!, 320, 1);
+    await triggerAutoSplitWidthResize(childElement!, 420, 1);
 
     expect(probeWidths.length).toBeGreaterThan(0);
-    expect(probeWidths[probeWidths.length - 1]).toBe("388px");
+    expect(probeWidths[probeWidths.length - 1]).toBe("420px");
 
     childRectSpy.mockRestore();
     appendSpy.mockRestore();
