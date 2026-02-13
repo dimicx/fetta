@@ -1127,6 +1127,8 @@ interface SplitTextProps<TCustom = unknown> extends WrapperMotionProps {
   onResplit?: (result: SplitTextElements) => void;
   options?: SplitTextOptions;
   autoSplit?: boolean;
+  /** When true, autoSplit/full-resplit updates replay initial->animate. */
+  animateOnResplit?: boolean;
   /** When true, reverts to original HTML after animation promise resolves */
   revertOnComplete?: boolean;
   /** Viewport observer options (replaces `inView`). Configures IntersectionObserver. */
@@ -1463,6 +1465,7 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
       onResplit,
       options,
       autoSplit = false,
+      animateOnResplit = false,
       revertOnComplete = false,
       viewport,
       onViewportEnter,
@@ -2853,8 +2856,12 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
       hasTap ||
       hasFocus ||
       hasWrapperVariants;
+    const suppressInitialOnResplit =
+      !animateOnResplit && pendingFullResplitRef.current;
     const childInitial =
-      shouldInheritVariants || initialLabel === undefined
+      suppressInitialOnResplit
+        ? false
+        : shouldInheritVariants || initialLabel === undefined
         ? undefined
         : initialLabel;
     const childAnimate =
@@ -2863,7 +2870,9 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
         : displayVariant;
     const wrapperVariants = shouldInheritVariants ? parentVariants : undefined;
     const wrapperInitial =
-      shouldInheritVariants && initialLabel !== undefined
+      suppressInitialOnResplit
+        ? false
+        : shouldInheritVariants && initialLabel !== undefined
         ? initialLabel
         : undefined;
     const wrapperAnimate =

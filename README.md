@@ -197,6 +197,7 @@ import { AnimatePresence } from "motion/react";
 | `onResplit` | `(result) => void` | — | Called when autoSplit/full-resplit replaces split output elements |
 | `options` | `SplitOptions` | — | Split options (type, classes, mask, propIndex, disableKerning) |
 | `autoSplit` | `boolean` | `false` | Re-split on container resize |
+| `animateOnResplit` | `boolean` | `false` | Replay variant enter animation on autoSplit/full-resplit. Set `true` to re-run enter animation on resplit |
 | `waitForFonts` | `boolean` | `true` | Wait for `document.fonts.ready` before splitting (recommended for stable kerning). Set `false` for immediate split. |
 | `revertOnComplete` | `boolean` | `false` | Revert after animation completes |
 | `onRevert` | `() => void` | — | Called when split text is reverted (manual or automatic) |

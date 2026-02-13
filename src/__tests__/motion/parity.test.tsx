@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { act, cleanup, render, waitFor } from "@testing-library/react";
 import React from "react";
+import { getResizeObservers } from "../setup";
 
 type CapturedMotionElement = { tag: string; props: Record<string, unknown> };
 
@@ -105,6 +106,69 @@ function getLatestWrapperEntry(entries: CapturedMotionElement[]) {
   return wrappers[wrappers.length - 1];
 }
 
+function getLatestSplitEntry(entries: CapturedMotionElement[], splitClass: string) {
+  const splitEntries = entries.filter(
+    (entry) =>
+      typeof entry.props.className === "string" &&
+      entry.props.className.includes(splitClass)
+  );
+  return splitEntries[splitEntries.length - 1];
+}
+
+const createRect = (width: number): DOMRect =>
+  ({
+    top: 0,
+    right: width,
+    bottom: 20,
+    left: 0,
+    width,
+    height: 20,
+    x: 0,
+    y: 0,
+    toJSON: () => ({}),
+  }) as DOMRect;
+
+async function triggerAutoSplitWidthResize(
+  childElement: HTMLElement,
+  width: number,
+  targetIndex = 0
+) {
+  const observers = getResizeObservers();
+  const widthObserver = observers.find((observer) =>
+    Array.from(observer.elements).some(
+      (entry) =>
+        entry instanceof HTMLElement &&
+        entry !== childElement &&
+        entry.contains(childElement)
+    )
+  );
+  const targets = widthObserver
+    ? Array.from(widthObserver.elements).filter(
+        (entry): entry is HTMLElement =>
+          entry instanceof HTMLElement &&
+          entry !== childElement &&
+          entry.contains(childElement)
+      )
+    : [];
+  const target = targets[targetIndex] ?? null;
+  expect(widthObserver).toBeTruthy();
+  expect(target).toBeTruthy();
+
+  await act(async () => {
+    vi.useFakeTimers();
+    Object.defineProperty(target!, "offsetWidth", {
+      value: width,
+      writable: true,
+      configurable: true,
+    });
+    widthObserver!.trigger([{ target: target!, contentRect: createRect(width) }]);
+    vi.advanceTimersByTime(200);
+    vi.runAllTimers();
+    await Promise.resolve();
+  });
+  vi.useRealTimers();
+}
+
 describe("SplitText motion parity", () => {
   beforeEach(async () => {
     const motionReact = await getMotionReactTestAPI();
@@ -166,6 +230,117 @@ describe("SplitText motion parity", () => {
         0.5
       );
     });
+  });
+
+  it("skips initial replay on resplit by default", async () => {
+    const onResplit = vi.fn();
+    const { container } = render(
+      <SplitText
+        className="wrapper"
+        autoSplit
+        options={{ type: "chars" }}
+        variants={{
+          hidden: { y: "100%" },
+          visible: { y: "0%" },
+        }}
+        initial="hidden"
+        animate="visible"
+        onResplit={onResplit}
+      >
+        <p style={{ fontSize: "20px" }}>Responsive split text</p>
+      </SplitText>
+    );
+
+    const motionReact = await getMotionReactTestAPI();
+
+    await waitFor(() => {
+      const splitLine = getLatestSplitEntry(
+        motionReact.__getMotionElements(),
+        "split-char"
+      );
+      expect(splitLine?.props.initial).toBe("hidden");
+    });
+
+    const childElement = container.querySelector("p") as HTMLElement | null;
+    expect(childElement).toBeTruthy();
+    const entriesBeforeResplit = motionReact.__getMotionElements().length;
+
+    // First resize seeds observer state, second should trigger full resplit.
+    await triggerAutoSplitWidthResize(childElement!, 320);
+    await triggerAutoSplitWidthResize(childElement!, 420);
+
+    await waitFor(() => {
+      expect(onResplit).toHaveBeenCalledTimes(1);
+    });
+
+    const resplitEntries = motionReact
+      .__getMotionElements()
+      .slice(entriesBeforeResplit)
+      .filter(
+        (entry) =>
+          typeof entry.props.className === "string" &&
+          entry.props.className.includes("split-char")
+      );
+    expect(resplitEntries.length).toBeGreaterThan(0);
+    expect(resplitEntries.some((entry) => entry.props.initial === false)).toBe(
+      true
+    );
+  });
+
+  it("replays initial->animate on resplit when animateOnResplit is true", async () => {
+    const onResplit = vi.fn();
+    const { container } = render(
+      <SplitText
+        className="wrapper"
+        autoSplit
+        animateOnResplit={true}
+        options={{ type: "chars" }}
+        variants={{
+          hidden: { y: "100%" },
+          visible: { y: "0%" },
+        }}
+        initial="hidden"
+        animate="visible"
+        onResplit={onResplit}
+      >
+        <p style={{ fontSize: "20px" }}>Responsive split text</p>
+      </SplitText>
+    );
+
+    const motionReact = await getMotionReactTestAPI();
+
+    await waitFor(() => {
+      const splitLine = getLatestSplitEntry(
+        motionReact.__getMotionElements(),
+        "split-char"
+      );
+      expect(splitLine?.props.initial).toBe("hidden");
+    });
+
+    const childElement = container.querySelector("p") as HTMLElement | null;
+    expect(childElement).toBeTruthy();
+    const entriesBeforeResplit = motionReact.__getMotionElements().length;
+
+    // First resize seeds observer state, second should trigger full resplit.
+    await triggerAutoSplitWidthResize(childElement!, 320);
+    await triggerAutoSplitWidthResize(childElement!, 420);
+
+    await waitFor(() => {
+      expect(onResplit).toHaveBeenCalledTimes(1);
+    });
+
+    const resplitEntries = motionReact
+      .__getMotionElements()
+      .slice(entriesBeforeResplit)
+      .filter(
+        (entry) =>
+          typeof entry.props.className === "string" &&
+          entry.props.className.includes("split-char")
+      );
+    expect(resplitEntries.length).toBeGreaterThan(0);
+    expect(resplitEntries.some((entry) => entry.props.initial === "hidden")).toBe(
+      true
+    );
   });
 
   it("waits for wrapper-only exit completion before safeToRemove", async () => {
