@@ -6,6 +6,7 @@ import {
 } from "../internal/initialStyles";
 import type { InitialStyles, InitialClasses } from "../internal/initialStyles";
 import { waitForFontsReady } from "../internal/waitForFontsReady";
+import { createViewportObserver } from "../internal/viewportObserver";
 import {
   createElement,
   forwardRef,
@@ -343,59 +344,15 @@ export const SplitText = forwardRef<HTMLElement, SplitTextProps>(
 
         // Set up IntersectionObserver if viewport callbacks are present
         if (needsViewport && containerRef.current) {
-          setupViewportObserver(containerRef.current);
+          observerRef.current = createViewportObserver(
+            viewportRef.current,
+            hasTriggeredOnceRef,
+            () => setIsInView(true),
+            () => setIsInView(false)
+          );
+          observerRef.current.observe(containerRef.current);
         }
       });
-
-      function setupViewportObserver(container: HTMLElement) {
-        const vpOptions = viewportRef.current || {};
-        const amount = vpOptions.amount ?? 0;
-        const leave = vpOptions.leave ?? 0;
-        const threshold =
-          amount === "some" ? 0 : amount === "all" ? 1 : amount;
-        const leaveThreshold =
-          leave === "some" ? 0 : leave === "all" ? 1 : leave;
-        const rootMargin = vpOptions.margin ?? "0px";
-        const root = vpOptions.root?.current ?? undefined;
-
-        // Use array with 0 + enter + leave to detect transitions at each threshold.
-        const thresholdValues = Array.from(
-          new Set([0, threshold, leaveThreshold])
-        ).sort((a, b) => a - b);
-        const thresholds =
-          thresholdValues.length === 1 ? thresholdValues[0] : thresholdValues;
-
-        observerRef.current = new IntersectionObserver(
-          (entries) => {
-            const entry = entries[0];
-            if (!entry) return;
-
-            const isOnce = vpOptions.once;
-
-            // Enter: when element is intersecting AND ratio is at/above threshold
-            if (entry.isIntersecting && entry.intersectionRatio >= threshold) {
-              if (isOnce && hasTriggeredOnceRef.current) return;
-              hasTriggeredOnceRef.current = true;
-              setIsInView(true);
-              return;
-            }
-
-            if (isOnce) return;
-
-            const shouldLeave =
-              leaveThreshold === 0
-                ? !entry.isIntersecting
-                : entry.intersectionRatio <= leaveThreshold;
-
-            if (shouldLeave) {
-              setIsInView(false);
-            }
-          },
-          { threshold: thresholds, rootMargin, root }
-        );
-
-        observerRef.current.observe(container);
-      }
 
       return () => {
         isMounted = false;
