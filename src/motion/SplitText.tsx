@@ -1842,6 +1842,16 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
       return safeFallbackWidth;
     }, []);
 
+    const lockCurrentRenderedLines = useCallback((root: HTMLElement) => {
+      const lineClass = optionsRef.current?.lineClass ?? "split-line";
+      const classTokens = lineClass.split(/\s+/).filter(Boolean);
+      if (classTokens.length === 0) return;
+      const selector = `.${classTokens.join(".")}`;
+      root.querySelectorAll<HTMLElement>(selector).forEach((line) => {
+        line.style.whiteSpace = "nowrap";
+      });
+    }, []);
+
     // Initial split
     useEffect(() => {
       if (!childElement) return;
@@ -2373,6 +2383,7 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
             clearTimeout(resizeTimerRef.current);
             resizeTimerRef.current = null;
           }
+          lockCurrentRenderedLines(currentElement);
           pendingFullResplitRef.current = true;
           let resplitWidth: number | undefined;
           const targets = resolveAutoSplitTargets(currentElement);
@@ -2463,6 +2474,7 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
       autoSplit,
       childTreeVersion,
       data,
+      lockCurrentRenderedLines,
       measureAndSetData,
       resolveLineMeasureWidth,
     ]);
@@ -2593,6 +2605,7 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
           optionsRef.current?.resplitDebounceMs
         );
         if (debounceMs <= 0) {
+          lockCurrentRenderedLines(child);
           pendingFullResplitRef.current = true;
           measureAndSetData(
             true,
@@ -2601,6 +2614,7 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
           return;
         }
         resizeTimerRef.current = setTimeout(() => {
+          lockCurrentRenderedLines(child);
           pendingFullResplitRef.current = true;
           measureAndSetData(
             true,
@@ -2652,6 +2666,7 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
     }, [
       autoSplit,
       data,
+      lockCurrentRenderedLines,
       measureAndSetData,
       measureLineFingerprintForWidth,
       resolveLineMeasureWidth,
