@@ -173,7 +173,7 @@ describe("splitText resize behavior", () => {
     parentElement.appendChild(element);
 
     const onResplit = vi.fn();
-    splitText(element, { autoSplit: true, onResplit });
+    splitText(element, { autoSplit: true, type: "chars,words", onResplit });
 
     const observer = getAutoSplitObserver();
     expect(observer).not.toBeNull();
@@ -192,6 +192,30 @@ describe("splitText resize behavior", () => {
 
     // Need to run requestAnimationFrame callback
     vi.runAllTimers();
+
+    expect(onResplit).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses custom autoSplit debounce delay from options", () => {
+    const element = document.createElement("p");
+    element.textContent = "Hello World";
+    parentElement.appendChild(element);
+
+    const onResplit = vi.fn();
+    splitText(element, {
+      autoSplit: true,
+      type: "chars,words",
+      onResplit,
+      resplitDebounceMs: 0,
+    });
+
+    const observer = getAutoSplitObserver();
+    const target = getPrimaryObservedTarget();
+
+    triggerResize(observer!, target, 100);
+    triggerResize(observer!, target, 150);
+
+    expect(onResplit).toHaveBeenCalledTimes(1);
   });
 
   it("skips first resize event (initial observation)", () => {

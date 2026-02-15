@@ -109,6 +109,7 @@ const result = splitText(element, options);
 | `lineClass` | `string` | `"split-line"` | CSS class for line elements |
 | `mask` | `"chars" \| "words" \| "lines"` | — | Wrap elements in `overflow: clip` container |
 | `autoSplit` | `boolean` | `false` | Re-split on container resize |
+| `resplitDebounceMs` | `number` | `100` | Debounce delay for autoSplit/full-resplit width updates (`0` disables debounce) |
 | `onResplit` | `(result) => void` | — | Callback after autoSplit/full-resplit replaces split output elements |
 | `onSplit` | `(result) => CallbackReturn` | — | Callback after initial split. Return animation/promise for `revertOnComplete` |
 | `revertOnComplete` | `boolean` | `false` | Auto-revert when returned animation completes |
@@ -158,7 +159,7 @@ import { SplitText } from "fetta/react";
 | `ref` | `Ref<HTMLElement>` | — | Ref to wrapper element |
 | `onSplit` | `(result) => CallbackReturn` | — | Called after initial split |
 | `onResplit` | `(result) => void` | — | Called when autoSplit/full-resplit replaces split output elements |
-| `options` | `SplitTextOptions` | — | Split options (`type`, classes, mask, etc.) |
+| `options` | `SplitTextOptions` | — | Split options (`type`, classes, mask, debounce, etc.) |
 | `autoSplit` | `boolean` | `false` | Re-split on container resize |
 | `waitForFonts` | `boolean` | `true` | Wait for `document.fonts.ready` before splitting |
 | `revertOnComplete` | `boolean` | `false` | Revert after animation completes |
@@ -324,6 +325,7 @@ Fetta keeps split text readable by screen readers:
 
 - Ligatures are disabled (`font-variant-ligatures: none`) because ligatures cannot span multiple elements.
 - Authored hard breaks are preserved (`<br>` and block boundaries are kept as hard split boundaries).
+- `autoSplit` width resplits are debounced by default (`100ms`), configurable via `resplitDebounceMs`.
 
 ## Browser Support
 

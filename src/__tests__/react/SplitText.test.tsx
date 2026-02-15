@@ -103,6 +103,43 @@ describe("SplitText React Component", () => {
     });
   });
 
+  it("respects options.resplitDebounceMs for autoSplit resplits", async () => {
+    const onResplit = vi.fn();
+    const { container } = render(
+      <SplitText
+        autoSplit
+        options={{ type: "chars,words", resplitDebounceMs: 0 }}
+        onResplit={onResplit}
+      >
+        <p>Hello World</p>
+      </SplitText>
+    );
+
+    await waitFor(() => {
+      expect(container.querySelectorAll(".split-char").length).toBeGreaterThan(0);
+    });
+
+    const observer = getLastResizeObserver();
+    expect(observer).not.toBeNull();
+    const target = observer
+      ? Array.from(observer.elements).find(
+          (entry): entry is HTMLElement => entry instanceof HTMLElement
+        )
+      : null;
+    expect(target).toBeTruthy();
+
+    try {
+      vi.useFakeTimers();
+
+      observer!.trigger([{ target: target!, contentRect: { width: 320 } }]);
+      observer!.trigger([{ target: target!, contentRect: { width: 420 } }]);
+
+      expect(onResplit).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("updates kerning without replacing nodes when lines are disabled", async () => {
     const onResplit = vi.fn();
     const { container } = render(

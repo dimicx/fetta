@@ -65,6 +65,8 @@ export interface SplitTextOptions {
   lineClass?: string;
   /** Apply overflow mask wrapper to elements for reveal animations */
   mask?: "lines" | "words" | "chars";
+  /** Debounce delay for autoSplit/full-resplit width updates in milliseconds (`0` disables debounce). */
+  resplitDebounceMs?: number;
   propIndex?: boolean;
   /** Skip kerning compensation (no margin adjustments applied).
    * Kerning is naturally lost when splitting into inline-block spans.
@@ -75,6 +77,15 @@ export interface SplitTextOptions {
 type InternalSplitTextOptions = SplitTextOptions & {
   isolateKerningMeasurement?: boolean;
 };
+
+const DEFAULT_RESPLIT_DEBOUNCE_MS = 100;
+
+function resolveResplitDebounceMs(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    return DEFAULT_RESPLIT_DEBOUNCE_MS;
+  }
+  return value;
+}
 
 interface ScrollPropOptions {
   /** Scroll offsets. Default: Motion's default ["start end", "end start"] */
@@ -2576,6 +2587,18 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
 
         if (resizeTimerRef.current) {
           clearTimeout(resizeTimerRef.current);
+          resizeTimerRef.current = null;
+        }
+        const debounceMs = resolveResplitDebounceMs(
+          optionsRef.current?.resplitDebounceMs
+        );
+        if (debounceMs <= 0) {
+          pendingFullResplitRef.current = true;
+          measureAndSetData(
+            true,
+            splitLines ? lineMeasureWidth : currentWidth
+          );
+          return;
         }
         resizeTimerRef.current = setTimeout(() => {
           pendingFullResplitRef.current = true;
@@ -2583,7 +2606,7 @@ export const SplitText = forwardRef(function SplitText<TCustom>(
             true,
             splitLines ? lineMeasureWidth : currentWidth
           );
-        }, 100);
+        }, debounceMs);
       };
 
       resizeObserverRef.current = new ResizeObserver((entries) => {

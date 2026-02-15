@@ -82,6 +82,8 @@ export interface SplitTextOptions {
   mask?: "lines" | "words" | "chars";
   /** Auto-split on resize (observes parent element) */
   autoSplit?: boolean;
+  /** Debounce delay for autoSplit/full-resplit width updates in milliseconds (`0` disables debounce). */
+  resplitDebounceMs?: number;
   /** Callback when autoSplit/full-resplit replaces split output elements */
   onResplit?: (result: Omit<SplitTextResult, "revert" | "dispose">) => void;
   /** Callback fired after text is split, receives split elements. Return animation for revertOnComplete. */
@@ -118,6 +120,15 @@ export interface SplitTextOptions {
 type InternalSplitTextOptions = SplitTextOptions & {
   isolateKerningMeasurement?: boolean;
 };
+
+const DEFAULT_RESPLIT_DEBOUNCE_MS = 100;
+
+function resolveResplitDebounceMs(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    return DEFAULT_RESPLIT_DEBOUNCE_MS;
+  }
+  return value;
+}
 
 type CSSVariableStyles = {
   [K in `--${string}`]?: string | number;
@@ -1585,6 +1596,7 @@ export function splitText(
     lineClass = "split-line",
     mask,
     autoSplit = false,
+    resplitDebounceMs,
     onResplit,
     onSplit,
     revertOnComplete = false,
@@ -1594,6 +1606,7 @@ export function splitText(
     initialClasses,
   } = options;
   const isolateKerningMeasurement = options.isolateKerningMeasurement !== false;
+  const resolvedResplitDebounceMs = resolveResplitDebounceMs(resplitDebounceMs);
 
   // Validation
   if (!(element instanceof HTMLElement)) {
@@ -2017,8 +2030,16 @@ export function splitText(
 
         if (autoSplitDebounceTimer) {
           clearTimeout(autoSplitDebounceTimer);
+          autoSplitDebounceTimer = null;
         }
-        autoSplitDebounceTimer = setTimeout(handleResize, 100);
+        if (resolvedResplitDebounceMs <= 0) {
+          handleResize();
+          return;
+        }
+        autoSplitDebounceTimer = setTimeout(
+          handleResize,
+          resolvedResplitDebounceMs
+        );
       });
 
       targets.forEach((target) => {

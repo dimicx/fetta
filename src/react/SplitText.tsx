@@ -33,6 +33,8 @@ export interface SplitTextOptions {
   lineClass?: string;
   /** Apply overflow mask wrapper to elements for reveal animations */
   mask?: "lines" | "words" | "chars";
+  /** Debounce delay for autoSplit/full-resplit width updates in milliseconds (`0` disables debounce). */
+  resplitDebounceMs?: number;
   propIndex?: boolean;
   /** Skip kerning compensation (no margin adjustments applied).
    * Kerning is naturally lost when splitting into inline-block spans.
